@@ -4,7 +4,7 @@ import datetime
 import requests
 
 def get_today_espn_games():
-    today = datetime.datetime.now().strftime("%Y%m%d")
+    game_time = datetime.datetime.strptime(game.get('date'), "%Y-%m-%dT%H:%MZ").strftime("%I:%M %p")
     url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
     response = requests.get(url)
     games = response.json().get("events", [])
@@ -19,9 +19,9 @@ def get_today_espn_games():
             'matchup': f"{away['team']['abbreviation']} @ {home['team']['abbreviation']}",
             'away_team': away['team']['abbreviation'],
             'home_team': home['team']['abbreviation'],
-            'away_pitcher': away.get('probablePitcher', {}).get('displayName', 'TBD'),
-            'home_pitcher': home.get('probablePitcher', {}).get('displayName', 'TBD'),
-            'game_time': game.get('date', '')[11:16]  # "HH:MM"
+            'away_pitcher': away.get('probablePitcher', {}).get('fullName', 'TBD'), if away.get('probablePitcher') else 'TBD'
+            'home_pitcher': home.get('probablePitcher', {}).get('fullName', 'TBD'), if home.get('probablePitcher') else 'TBD'
+            'game_time': game.time
         })
     return pd.DataFrame(game_list)
 
