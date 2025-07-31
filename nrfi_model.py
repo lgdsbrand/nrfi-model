@@ -41,7 +41,6 @@ def generate_model_nrfi(df):
     df["model_nrfi_percent"] = (df["model_nrfi_percent"] * 100).round(1)
     return df
 
-
 def render():
     st.title("🟢 NRFI Model (No Run First Inning)")
 
@@ -52,7 +51,19 @@ def render():
 
     df = generate_model_nrfi(df)
 
-    # Color function: green for ≥55%, red for ≤45%, else black
+    # Drop unneeded columns
+    df = df.drop(columns=["away_team", "home_team"], errors="ignore")
+
+    # Rename for cleaner display
+    df = df.rename(columns={
+        "game_time": "Time",
+        "matchup": "Matchup",
+        "away_pitcher": "Away Pitcher",
+        "home_pitcher": "Home Pitcher",
+        "model_nrfi_percent": "NRFI %"
+    })
+
+    # Color logic: green ≥ 55%, red ≤ 45%
     def highlight(val):
         if val >= 55:
             color = "green"
@@ -62,5 +73,11 @@ def render():
             color = "black"
         return f"color: {color}; font-weight: bold"
 
-    styled_df = df.style.applymap(highlight, subset=["model_nrfi_percent"])
-    st.dataframe(styled_df, use_container_width=True)
+    styled_df = df.style.applymap(highlight, subset=["NRFI %"])
+
+    # Clean display (no row numbers or scrollbars)
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True
+    )
