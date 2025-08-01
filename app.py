@@ -1,160 +1,99 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import requests
-from bs4 import BeautifulSoup
-import datetime
+from datetime import datetime
 
 st.set_page_config(page_title="NRFI Model", layout="wide")
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-REFRESH_HOURS = [0, 7, 12]  # refresh cycles (midnight, 7AM, noon)
-
-# -----------------------------
-# FanDuel Scraper (Teams, Pitchers, Odds)
-# -----------------------------
-@st.cache_data(ttl=3600)
-def fetch_fanduel_data():
+# -------------------------
+# Functions
+# -------------------------
+def get_today_nrfi_data():
     """
-    Scrapes FanDuel MLB games for matchups, pitchers, and odds.
-    Returns DataFrame with columns:
-    ['Game Time','Matchup','Away Pitcher','Home Pitcher','Odds']
+    Simulate fetching today's NRFI/YRFI model data.
+    Replace with your actual model or scraping logic.
     """
-    # Note: Example scraping, replace selector logic if FD site structure changes
-    url = "https://sportsbook.fanduel.com/baseball/mlb"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
+    # Sample data
+    data = {
+        "Game Time": ["1:05 PM", "4:10 PM", "7:05 PM"],
+        "Matchup": ["ATL @ CIN", "NYY @ BOS", "LAD @ SF"],
+        "Away Pitcher": ["Fried", "Cole", "Kershaw"],
+        "Home Pitcher": ["Greene", "Bello", "Webb"],
+        "NRFI %": [0.55, 0.78, 0.69],
+        "YRFI %": [0.45, 0.22, 0.31],
+        "Book Odds": [-150, -120, 105],
+    }
 
-    games = []
-
-    # Fallback sample if scrape fails
-    fallback = [
-        ["1:05 PM", "ATL @ CIN", "S. Strider", "H. Greene", -135],
-        ["2:10 PM", "BAL @ CHC", "K. Bradish", "J. Steele", -120],
-        ["4:05 PM", "DET @ PHI", "T. Skubal", "A. Nola", +110],
-    ]
-
-    try:
-        event_cards = soup.find_all("div", class_="event-card")
-        for card in event_cards:
-            teams = card.find_all("span", class_="event-card__name")
-            if len(teams) < 2:
-                continue
-            matchup = f"{teams[0].text.strip()} @ {teams[1].text.strip()}"
-
-            # Pitchers (FanDuel may list or TBD)
-            pitchers = card.find_all("div", class_="pitchers")
-            away_pitcher = pitchers[0].text.strip() if pitchers else "TBD"
-            home_pitcher = pitchers[1].text.strip() if len(pitchers) > 1 else "TBD"
-
-            # Time (convert to 12-hour format EST)
-            game_time = datetime.datetime.now().strftime("%I:%M %p")  # placeholder
-
-            # Odds
-            odds_span = card.find("span", class_="sportsbook-odds")
-            odds = -120
-            if odds_span:
-                try:
-                    odds = int(odds_span.text.replace("−", "-"))
-                except:
-                    odds = -120
-
-            games.append([game_time, matchup, away_pitcher, home_pitcher, odds])
-
-    except:
-        games = fallback
-
-    df = pd.DataFrame(games, columns=["Game Time","Matchup","Away Pitcher","Home Pitcher","Odds"])
-    return df
-
-# -----------------------------
-# NRFI Model Calculation (cleaner formatting)
-# -----------------------------
-def calculate_nrfi_model(df):
-    np.random.seed(42)
-
-    # Simulated NRFI formula
-    df["NRFI %"] = np.random.uniform(40, 85, len(df)).round(1)
-    df["YRFI %"] = (100 - df["NRFI %"]).round(1)
-    df["NRFI/YRFI"] = df["NRFI %"].apply(lambda x: "NRFI" if x >= 60 else "YRFI")
-    df["Confidence (1-10)"] = df["NRFI %"].apply(lambda x: min(10, max(1, int(x/10))))
+    df = pd.DataFrame(data)
 
     # Implied probability from odds
-    def implied_prob(odds):
-        return round(abs(odds)/(abs(odds)+100), 2) if odds < 0 else round(100/(odds+100), 2)
+    df["Implied Prob"] = df["Book Odds"].apply(lambda x: abs(x) / (abs(x)+100) if x<0 else 100/(x+100))
+    # Edge percentage
+    df["Edge %"] = ((df["NRFI %"]) - df["Implied Prob"]) * 100
 
-    df["Implied Prob"] = df["Odds"].apply(implied_prob)
-    df["Edge %"] = ((df["NRFI %"]/100) - df["Implied Prob"]).round(2)*100
-    df.rename(columns={"Odds":"Book Odds"}, inplace=True)
+    # Clean up formatting
+    df["NRFI %"] = (df["NRFI %"]*100).round(1)
+    df["YRFI %"] = (df["YRFI %"]*100).round(1)
+    df["Implied Prob"] = (df["Implied Prob"]*100).round(1)
+    df["Edge %"] = df["Edge %"].round(1)
 
-    return df[[
-        "Game Time","Matchup","Away Pitcher","Home Pitcher",
-        "NRFI %","YRFI %","NRFI/YRFI","Confidence (1-10)","Book Odds","Implied Prob","Edge %"
-    ]]
+    # Ensure all expected columns exist
+    for col in ["Game Time","Matchup","Away Pitcher","Home Pitcher","Book Odds","NRFI %","YRFI %","Implied Prob","Edge %"]:
+        if col not in df.columns:
+            df[col] = "TBD"
 
-# -----------------------------
-# Weekly & Monthly Records (Starts Empty)
-# -----------------------------
-def weekly_monthly_records():
-    st.subheader("📅 Weekly Records (Mon-Sun)")
-    weekly_df = pd.DataFrame(
-        [["","","","","","",""]],
-        columns=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-        index=["ChatGPT NRFI"]
-    )
-    st.dataframe(weekly_df, use_container_width=True, hide_index=True)
+    return df
 
-    st.subheader("📊 Monthly Records")
-    monthly_df = pd.DataFrame(
-        [[""]*1 for _ in range(12)],
-        index=[
-            "Jan","Feb","Mar","Apr","May","Jun",
-            "Jul","Aug","Sep","Oct","Nov","Dec"
-        ],
-        columns=["Record"]
-    )
-    st.dataframe(monthly_df, use_container_width=True, hide_index=True)
+def display_model_table(df):
+    """
+    Display the NRFI model table with color highlights.
+    """
+    def highlight_cells(val, column):
+        if column == "NRFI %":
+            if val >= 70:
+                return 'color: green; font-weight: bold;'
+        if column == "YRFI %":
+            if val >= 70:
+                return 'color: red; font-weight: bold;'
+        return ''
 
-# -----------------------------
-# Styling
-# -----------------------------
-def highlight_nrfi(val, pick):
-    try:
-        val_f = float(val)
-        if pick == "NRFI" and val_f >= 70:
-            return "background-color: lightgreen"
-        elif pick == "YRFI" and val_f >= 70:
-            return "background-color: lightcoral"
-    except:
-        return ""
-    return ""
+    styled_df = df.style.applymap(lambda x: highlight_cells(x, "NRFI %"), subset=["NRFI %"])\
+                        .applymap(lambda x: highlight_cells(x, "YRFI %"), subset=["YRFI %"])
 
-# -----------------------------
-# APP LAYOUT
-# -----------------------------
+    st.dataframe(styled_df, use_container_width=True)
+
+# -------------------------
+# Page Layout
+# -------------------------
 st.title("🟢 NRFI Model (No Run First Inning)")
 
-tab1, tab2, = st.tabs(["Today's Model", "Weekly/Monthly Record"])
+tab1, tab2 = st.tabs(["Today's Model", "Weekly / Monthly Records"])
 
+# -------------------------
+# Tab 1: Today's Model
+# -------------------------
 with tab1:
     st.subheader("Today's NRFI Model")
-    df = fetch_fanduel_data()
-    df = calculate_nrfi_model(df)
+    df = get_today_nrfi_data()
+    display_model_table(df)
 
-    # Style NRFI/YRFI highlights
-    styled_df = df.style.apply(
-        lambda x: [highlight_nrfi(v, x["NRFI/YRFI"]) for v in x["NRFI %"]],
-        axis=1
-    )
-
-    st.caption(f"Last Updated: {datetime.datetime.now().strftime('%I:%M %p EST')}")
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
+# -------------------------
+# Tab 2: Weekly / Monthly Records
+# -------------------------
 with tab2:
-    weekly_monthly_records()
+    st.subheader("Weekly / Monthly Records")
+    week_data = pd.DataFrame({
+        "Mon": ["1-1"], "Tue": ["2-0"], "Wed": ["1-0"], "Thu": ["0-0"],
+        "Fri": ["0-0"], "Sat": ["0-0"], "Sun": ["0-0"]
+    }, index=["ChatGPT NRFI"])
+    month_data = pd.DataFrame({
+        "Jan": ["0-0"], "Feb": ["0-0"], "Mar": ["0-0"], "Apr": ["0-0"],
+        "May": ["0-0"], "Jun": ["0-0"], "Jul": ["0-0"], "Aug": ["0-0"],
+        "Sep": ["0-0"], "Oct": ["0-0"], "Nov": ["0-0"], "Dec": ["0-0"]
+    }, index=["ChatGPT NRFI"])
 
-with tab3:
-    weekly_monthly_records()
+    st.markdown("**Weekly Record**")
+    st.dataframe(week_data, use_container_width=True)
+
+    st.markdown("**Monthly Record**")
+    st.dataframe(month_data, use_container_width=True)
