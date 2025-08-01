@@ -71,26 +71,28 @@ def fetch_fanduel_data():
     return df
 
 # -----------------------------
-# NRFI Model Calculation
+# NRFI Model Calculation (cleaner formatting)
 # -----------------------------
 def calculate_nrfi_model(df):
     np.random.seed(42)
 
-    # Simulated NRFI formula (replace with weighted stats using CrowdsLine data)
+    # Simulated NRFI formula
     df["NRFI %"] = np.random.uniform(40, 85, len(df)).round(1)
+    df["YRFI %"] = (100 - df["NRFI %"]).round(1)
     df["NRFI/YRFI"] = df["NRFI %"].apply(lambda x: "NRFI" if x >= 60 else "YRFI")
     df["Confidence (1-10)"] = df["NRFI %"].apply(lambda x: min(10, max(1, int(x/10))))
 
     # Implied probability from odds
     def implied_prob(odds):
-        return abs(odds)/(abs(odds)+100) if odds < 0 else 100/(odds+100)
+        return round(abs(odds)/(abs(odds)+100), 2) if odds < 0 else round(100/(odds+100), 2)
 
-    df["Edge %"] = ((df["NRFI %"]/100) - df["Odds"].apply(implied_prob)).round(2)*100
+    df["Implied Prob"] = df["Odds"].apply(implied_prob)
+    df["Edge %"] = ((df["NRFI %"]/100) - df["Implied Prob"]).round(2)*100
     df.rename(columns={"Odds":"Book Odds"}, inplace=True)
 
     return df[[
         "Game Time","Matchup","Away Pitcher","Home Pitcher",
-        "NRFI %","NRFI/YRFI","Confidence (1-10)","Book Odds","Edge %"
+        "NRFI %","YRFI %","NRFI/YRFI","Confidence (1-10)","Book Odds","Implied Prob","Edge %"
     ]]
 
 # -----------------------------
@@ -135,7 +137,7 @@ def highlight_nrfi(val, pick):
 # -----------------------------
 st.title("🟢 NRFI Model (No Run First Inning)")
 
-tab1, tab2, tab3 = st.tabs(["Today's Model", "Weekly Record", "Monthly Record"])
+tab1, tab2, = st.tabs(["Today's Model", "Weekly/Monthly Record"])
 
 with tab1:
     st.subheader("Today's NRFI Model")
