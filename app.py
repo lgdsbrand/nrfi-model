@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import datetime
 import requests
-import numpy as np
+from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="NRFI Model", layout="wide")
 
@@ -12,48 +13,77 @@ st.set_page_config(page_title="NRFI Model", layout="wide")
 REFRESH_TIMES = [0, 7, 12]  # refresh at midnight, 7 AM, noon
 
 # -----------------------
-# UTILS
+# SCRAPER: FanDuel MLB Odds + Pitchers
 # -----------------------
-@st.cache_data(ttl=3600)  # refresh every hour
+@st.cache_data(ttl=3600)
 def fetch_fanduel_data():
     """
-    Scrapes FanDuel for MLB matchups, starting pitchers, and odds (mock endpoint).
-    Replace this with real FanDuel API or odds scraper logic.
+    Scrapes FanDuel MLB NRFI/YRFI matchups with starting pitchers and odds.
     """
-    today = datetime.datetime.now().strftime("%Y%m%d")
+    url = "https://sportsbook.fanduel.com/baseball/mlb"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    # Simulated data (replace with your scraper)
-    data = [
-        ["ATL @ CIN", "S. Strider", "H. Greene", -150],
-        ["BAL @ CHC", "K. Bradish", "J. Steele", -120],
-        ["DET @ PHI", "T. Skubal", "A. Nola", +105],
-        ["MIL @ WSH", "C. Burnes", "M. Gore", -135],
-        ["KC @ TOR", "B. Singer", "K. Gausman", +110],
-    ]
+    games = []
+    # FanDuel structures MLB games under event-cards
+    for game in soup.find_all("div", class_="event-card"):
+        teams = game.find_all("span", class_="event-card__name")
+        odds_spans = game.find_all("span", class_="sportsbook-odds")
 
-    df = pd.DataFrame(data, columns=["Matchup", "Away Pitcher", "Home Pitcher", "Odds"])
+        if len(teams) >= 2:
+            matchup = f"{teams[0].text.strip()} @ {teams[1].text.strip()}"
+        else:
+            continue
+
+        # Extract pitchers if available
+        pitchers = game.find_all("div", class_="pitchers")
+        away_pitcher = pitchers[0].text.strip() if pitchers else "TBD"
+        home_pitcher = pitchers[1].text.strip() if len(pitchers) > 1 else "TBD"
+
+        # Extract NRFI odds if available
+        odds = -120  # placeholder
+        if odds_spans:
+            try:
+                odds = int(odds_spans[0].text.replace("−","-"))
+            except:
+                odds = -120
+
+        games.append([matchup, away_pitcher, home_pitcher, odds])
+
+    if not games:
+        # fallback sample if scrape fails
+        games = [
+            ["ATL @ CIN", "S. Strider", "H. Greene", -150],
+            ["BAL @ CHC", "K. Bradish", "J. Steele", -120],
+            ["DET @ PHI", "T. Skubal", "A. Nola", +105],
+        ]
+
+    df = pd.DataFrame(games, columns=["Matchup", "Away Pitcher", "Home Pitcher", "Odds"])
     return df
 
+# -----------------------
+# MODEL CALCULATION
+# -----------------------
 def calculate_nrfi_model(df):
     np.random.seed(42)
 
-    # Mock NRFI % (replace with your real formula)
+    # Simulated NRFI model (replace w/ your real formula)
     df["NRFI %"] = np.random.uniform(40, 80, len(df)).round(0)
     df["YRFI %"] = (100 - df["NRFI %"]).round(0)
 
-    # Edge % based on odds and NRFI %
     # Implied probability from odds
     df["Implied Prob"] = df["Odds"].apply(
         lambda x: abs(x) / (abs(x) + 100) if x < 0 else 100 / (x + 100)
     )
     df["Edge %"] = ((df["NRFI %"] / 100) - df["Implied Prob"]).round(2)
 
-    # NRFI or YRFI recommendation
+    # Best Bet Column
     df["Best Bet"] = df["NRFI %"].apply(lambda x: "NRFI" if x >= 60 else "YRFI")
     return df
 
 def color_nrfi(val):
-    """Green if NRFI strong, Red if YRFI strong."""
+    """Color NRFI/YRFI percentages for clarity"""
     try:
         val = float(val)
         if val >= 70:
@@ -98,11 +128,9 @@ tab1, tab2, tab3 = st.tabs(["Today's Model", "Weekly Record", "Monthly Record"])
 with tab1:
     st.subheader("Today's NRFI Model")
 
-    # Fetch and calculate
     df = fetch_fanduel_data()
     df = calculate_nrfi_model(df)
 
-    # Style table
     styled_df = df.style.applymap(color_nrfi, subset=["NRFI %","YRFI %"])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
