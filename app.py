@@ -1,128 +1,114 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 import pytz
+import random
 
 st.set_page_config(page_title="NRFI Model", layout="wide")
 
-# ---------------------------
-# 1️⃣ Scrape FanDuel MLB Games
-# ---------------------------
-def scrape_fanduel_games():
-    url = "https://sportsbook.fanduel.com/baseball/mlb"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-
+# -----------------------------
+# Utility Functions
+# -----------------------------
+def fetch_espn_games():
+    today = datetime.now().strftime("%Y%m%d")
+    url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
+    resp = requests.get(url)
+    data = resp.json()
+    
     games = []
-    for event in soup.find_all("div", class_="event-card"):
-        teams = event.find_all("span", class_="event-card__name")
-        if len(teams) == 2:
-            away_team = teams[0].text.strip()
-            home_team = teams[1].text.strip()
+    for event in data.get("events", []):
+        comp = event.get("competitions", [])[0]
+        competitors = comp.get("competitors", [])
 
-            # Attempt to scrape pitchers if available
-            pitchers = event.find_all("div", class_="pitchers")
-            away_pitcher = pitchers[0].text.strip() if len(pitchers) >= 1 else "TBD"
-            home_pitcher = pitchers[1].text.strip() if len(pitchers) >= 2 else "TBD"
+        # Ensure correct home/away mapping
+        away = next((t for t in competitors if t["homeAway"] == "away"), None)
+        home = next((t for t in competitors if t["homeAway"] == "home"), None)
 
-            # Odds
-            odds_elem = event.find("span", class_="sportsbook-odds")
-            odds = odds_elem.text.strip() if odds_elem else "N/A"
+        if not away or not home:
+            continue
 
-            # Game Time placeholder (FanDuel doesn't list on main page)
-            game_time = datetime.now().strftime("%I:%M %p")
+        game_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
+        game_time = game_time.astimezone(pytz.timezone("US/Eastern")).strftime("%I:%M %p ET")
 
-            games.append({
-                "Game Time": game_time,
-                "Matchup": f"{away_team} @ {home_team}",
-                "Away Pitcher": away_pitcher,
-                "Home Pitcher": home_pitcher,
-                "Book Odds": odds
-            })
+        away_pitcher = away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
+        home_pitcher = home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
 
+        games.append({
+            "Game Time": game_time,
+            "Matchup": f"{away['team']['displayName']} @ {home['team']['displayName']}",
+            "Away Pitcher": away_pitcher,
+            "Home Pitcher": home_pitcher
+        })
     return pd.DataFrame(games)
 
+def calculate_nrfi_confidence(row):
+    # Simulated model % for now (replace with real formula when ready)
+    confidence = random.uniform(40, 85)
+    return round(confidence)
 
-# ---------------------------
-# 2️⃣ Generate NRFI / YRFI Model
-# ---------------------------
-def calculate_nrfi_model(df):
-    np.random.seed(42)
-    df["Model %"] = np.random.uniform(45, 80, len(df)).round(0).astype(int)
-    df["NRFI/YRFI"] = df["Model %"].apply(lambda x: "NRFI" if x >= 60 else "YRFI")
+def determine_nrfi_label(conf):
+    if conf >= 70:
+        return "NRFI"
+    elif conf <= 59:
+        return "YRFI"
+    else:
+        return "Lean"
 
-    # Convert odds to implied probability
-    def american_to_prob(odds):
-        try:
-            odds = int(str(odds).replace("+", ""))
-            if odds < 0:
-                return abs(odds) / (abs(odds) + 100)
-            else:
-                return 100 / (odds + 100)
-        except:
-            return np.nan
+def color_confidence(val):
+    if isinstance(val, int):
+        if val >= 70:
+            return "color: green; font-weight: bold"
+        elif val <= 59:
+            return "color: red; font-weight: bold"
+    return ""
 
-    df["Book Odds Clean"] = pd.to_numeric(df["Book Odds"].str.replace("+",""), errors="coerce")
-    df["Edge %"] = ((df["Model %"]/100) - df["Book Odds Clean"].apply(american_to_prob)) * 100
-    df["Edge %"] = df["Edge %"].round(0).astype(int)
+# -----------------------------
+# Auto-refresh Logic
+# -----------------------------
+est = pytz.timezone("US/Eastern")
+current_hour = datetime.now(est).hour
+# Refresh at midnight, 7am, noon, and every hour
+if current_hour in [0, 7, 12] or datetime.now().minute == 0:
+    st.experimental_rerun()
 
-    return df[[
-        "Game Time","Matchup","Away Pitcher","Home Pitcher",
-        "NRFI/YRFI","Model %","Edge %","Book Odds"
-    ]]
-
-
-# ---------------------------
-# 3️⃣ Streamlit UI
-# ---------------------------
+# -----------------------------
+# Main App Layout
+# -----------------------------
 st.title("🟢 NRFI Model (No Run First Inning)")
 
-tabs = st.tabs(["Today's Model", "Weekly / Monthly Records"])
+tab1, tab2 = st.tabs(["Today's Model", "Weekly / Monthly Records"])
 
-# Today's Model Tab
-with tabs[0]:
-    df_games = scrape_fanduel_games()
-
-    # Force refresh at midnight, 7 AM, noon
-    est = pytz.timezone("US/Eastern")
-    current_hour = datetime.now(est).hour
-    if current_hour in [0, 7, 12]:
-        st.experimental_rerun()
+with tab1:
+    df_games = fetch_espn_games()
 
     if df_games.empty:
         st.info("No MLB games available right now. Check back at the next refresh cycle.")
     else:
-        df_nrfi = calculate_nrfi_model(df_games)
+        # Compute NRFI Confidence
+        df_games["Confidence %"] = df_games.apply(lambda x: calculate_nrfi_confidence(x), axis=1)
+        df_games["NRFI/YRFI"] = df_games["Confidence %"].apply(lambda x: determine_nrfi_label(x))
+        df_games["Book Odds"] = ""
+        df_games["Edge %"] = ""
 
-        # Highlight NRFI ≥70 green, YRFI ≤59 red
-        def highlight_cells(val, row):
-            if row["NRFI/YRFI"] == "NRFI" and row["Model %"] >= 70:
-                return 'color: green; font-weight: bold'
-            if row["NRFI/YRFI"] == "YRFI" and row["Model %"] <= 59:
-                return 'color: red; font-weight: bold'
-            return ''
+        # Reorder columns
+        df_games = df_games[[
+            "Game Time", "Matchup", "Away Pitcher", "Home Pitcher",
+            "NRFI/YRFI", "Confidence %", "Book Odds", "Edge %"
+        ]]
 
         st.dataframe(
-            df_nrfi.style.apply(
-                lambda row: [highlight_cells(v, row) for v in row], axis=1
-            ),
+            df_games.style.applymap(color_confidence, subset=["Confidence %"]),
             use_container_width=True,
-            hide_index=True  # ✅ removes far-left index column
+            hide_index=True
         )
 
-# Weekly / Monthly Records Tab
-with tabs[1]:
-    st.subheader("📊 Weekly / Monthly NRFI Model Records")
-    weekly_monthly = pd.DataFrame({
-        "Mon": [], "Tue": [], "Wed": [], "Thu": [], "Fri": [], "Sat": [], "Sun": []
+with tab2:
+    st.subheader("📊 Weekly / Monthly Records")
+    records = pd.DataFrame({
+        "Period": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
+                   "January", "February", "March", "April", "May",
+                   "June", "July", "August", "September", "October", "November", "December"],
+        "Record": ["" for _ in range(19)]
     })
-    st.dataframe(weekly_monthly, use_container_width=True, hide_index=True)
-    monthly = pd.DataFrame({
-        "Month": ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-        "Record": ["" for _ in range(12)]
-    })
-    st.dataframe(monthly, use_container_width=True, hide_index=True)
+    st.dataframe(records, use_container_width=True, hide_index=True)
