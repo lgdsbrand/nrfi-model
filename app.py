@@ -9,11 +9,6 @@ import pytz
 st.set_page_config(page_title="NRFI Model", layout="wide")
 
 # ---------------------------
-# Auto-refresh
-# ---------------------------
-st.experimental_set_query_params(_ts=str(datetime.now().timestamp()))
-
-# ---------------------------
 # 1️⃣ Scrape FanDuel MLB Games
 # ---------------------------
 def scrape_fanduel_games():
@@ -29,14 +24,24 @@ def scrape_fanduel_games():
             away_team = teams[0].text.strip()
             home_team = teams[1].text.strip()
 
+            # Attempt to scrape pitchers if available
+            pitchers = event.find_all("div", class_="pitchers")
+            away_pitcher = pitchers[0].text.strip() if len(pitchers) >= 1 else "TBD"
+            home_pitcher = pitchers[1].text.strip() if len(pitchers) >= 2 else "TBD"
+
+            # Odds
             odds_elem = event.find("span", class_="sportsbook-odds")
             odds = odds_elem.text.strip() if odds_elem else "N/A"
 
+            # Game Time placeholder (FanDuel doesn't list on main page)
+            game_time = datetime.now().strftime("%I:%M %p")
+
             games.append({
+                "Game Time": game_time,
                 "Matchup": f"{away_team} @ {home_team}",
-                "Away Team": away_team,
-                "Home Team": home_team,
-                "Odds": odds
+                "Away Pitcher": away_pitcher,
+                "Home Pitcher": home_pitcher,
+                "Book Odds": odds
             })
 
     return pd.DataFrame(games)
@@ -47,9 +52,10 @@ def scrape_fanduel_games():
 # ---------------------------
 def calculate_nrfi_model(df):
     np.random.seed(42)
-    df["NRFI %"] = np.random.uniform(45, 80, len(df)).round(0).astype(int)
-    df["NRFI/YRFI"] = df["NRFI %"].apply(lambda x: "NRFI" if x >= 60 else "YRFI")
+    df["Model %"] = np.random.uniform(45, 80, len(df)).round(0).astype(int)
+    df["NRFI/YRFI"] = df["Model %"].apply(lambda x: "NRFI" if x >= 60 else "YRFI")
 
+    # Convert odds to implied probability
     def american_to_prob(odds):
         try:
             odds = int(str(odds).replace("+", ""))
@@ -60,11 +66,14 @@ def calculate_nrfi_model(df):
         except:
             return np.nan
 
-    df["Book Odds"] = pd.to_numeric(df["Odds"].str.replace("+",""), errors="coerce")
-    df["Edge %"] = ((df["NRFI %"]/100) - df["Book Odds"].apply(american_to_prob)) * 100
+    df["Book Odds Clean"] = pd.to_numeric(df["Book Odds"].str.replace("+",""), errors="coerce")
+    df["Edge %"] = ((df["Model %"]/100) - df["Book Odds Clean"].apply(american_to_prob)) * 100
     df["Edge %"] = df["Edge %"].round(0).astype(int)
 
-    return df[["Matchup", "NRFI/YRFI", "NRFI %", "Book Odds", "Edge %"]]
+    return df[[
+        "Game Time","Matchup","Away Pitcher","Home Pitcher",
+        "NRFI/YRFI","Model %","Edge %","Book Odds"
+    ]]
 
 
 # ---------------------------
@@ -74,9 +83,7 @@ st.title("🟢 NRFI Model (No Run First Inning)")
 
 tabs = st.tabs(["Today's Model", "Weekly / Monthly Records"])
 
-# ---------------------------
-# Tab 1: Today's Model
-# ---------------------------
+# Today's Model Tab
 with tabs[0]:
     df_games = scrape_fanduel_games()
 
@@ -91,11 +98,11 @@ with tabs[0]:
     else:
         df_nrfi = calculate_nrfi_model(df_games)
 
-        # Highlight NRFI ≥70 green, YRFI ≥70 red
+        # Highlight NRFI ≥70 green, YRFI ≤59 red
         def highlight_cells(val, row):
-            if row["NRFI/YRFI"] == "NRFI" and row["NRFI %"] >= 70:
+            if row["NRFI/YRFI"] == "NRFI" and row["Model %"] >= 70:
                 return 'color: green; font-weight: bold'
-            if row["NRFI/YRFI"] == "YRFI" and (100 - row["NRFI %"]) >= 70:
+            if row["NRFI/YRFI"] == "YRFI" and row["Model %"] <= 59:
                 return 'color: red; font-weight: bold'
             return ''
 
@@ -104,12 +111,10 @@ with tabs[0]:
                 lambda row: [highlight_cells(v, row) for v in row], axis=1
             ),
             use_container_width=True,
-            hide_index=True  # ✅ removes far-left 0,1,2 column
+            hide_index=True  # ✅ removes far-left index column
         )
 
-# ---------------------------
-# Tab 2: Weekly / Monthly Records
-# ---------------------------
+# Weekly / Monthly Records Tab
 with tabs[1]:
     st.subheader("📊 Weekly / Monthly NRFI Model Records")
     weekly_monthly = pd.DataFrame({
