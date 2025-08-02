@@ -13,14 +13,5 @@ def update_models():
     except Exception as e:
         print(f"Error generating NRFI model: {e}")
 
-    # === 2. Generate Daily MLB Model ===
-    try:
-        daily_df = generate_daily_model()
-        daily_filename = "daily_model.csv"
-        daily_df.to_csv(daily_filename, index=False)
-        print(f"[{datetime.now()}] Daily model saved as {daily_filename}")
-    except Exception as e:
-        print(f"Error generating Daily model: {e}")
-
 if __name__ == "__main__":
     update_models()
