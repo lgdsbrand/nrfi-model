@@ -1,94 +1,75 @@
 import streamlit as st
 import pandas as pd
+import requests
+from datetime import datetime
 
-# ===== PAGE CONFIG =====
-st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
+st.set_page_config(layout="wide")
 
-# Hide Streamlit menu and footer
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_st_style, unsafe_allow_html=True)
-
-# Back to Homepage button
+# ---------------------------
+# HEADER
+# ---------------------------
 st.markdown(
     """
-    <a href="https://lineupwire.com" target="_self">
-        <button style="
+    <style>
+        .back-btn {
             background-color: black;
             color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            border: none;
-            font-size: 16px;
-            cursor: pointer;
-        ">Back to Homepage</button>
-    </a>
+            padding: 8px 20px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .back-btn:hover {
+            background-color: #333;
+        }
+        .dataframe tbody tr td {
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+    <a class="back-btn" href="https://lineupwire.com">⬅ Back to Homepage</a>
     """,
     unsafe_allow_html=True
 )
 
-st.title("🔴🟢 NRFI/YRFI Model")
+st.markdown("<h1>🔴🟢 NRFI / YRFI Model</h1>", unsafe_allow_html=True)
 
-# ===== LOAD DATA (replace with your Google Sheet or data source) =====
-try:
-    df = pd.read_csv("nrfi_model.csv")
+# ---------------------------
+# ESPN API - MLB Games Today
+# ---------------------------
+today = datetime.now().strftime("%Y%m%d")
+url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
+data = requests.get(url).json()
 
-    # Format confidence as whole numbers
-    df["Confidence %"] = df["Confidence %"].astype(int)
+games = []
+for event in data.get("events", []):
+    game_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00")).strftime("%I:%M %p ET")
+    away_team = event["competitions"][0]["competitors"][1]["team"]["displayName"]
+    home_team = event["competitions"][0]["competitors"][0]["team"]["displayName"]
+    
+    # Dummy NRFI/YRFI confidence calculation (replace with your formula)
+    nrfi_conf = (len(away_team) + len(home_team)) % 100
+    yrfi_conf = 100 - nrfi_conf
+    best_pick = "NRFI" if nrfi_conf >= yrfi_conf else "YRFI"
+    conf = max(nrfi_conf, yrfi_conf)
+    
+    # Color code cells
+    color = "background-color: red; color: black" if best_pick == "NRFI" else "background-color: green; color: black"
+    
+    games.append([
+        game_time, away_team, home_team, best_pick, conf, color
+    ])
 
-    # Sort by confidence descending
-    df = df.sort_values("Confidence %", ascending=False)
+columns = ["Game Time", "Away Team", "Home Team", "Pick", "Confidence %", "color"]
 
-    # Create NRFI/YRFI color cells
-    def color_cell(row):
-        color = "red" if row["NRFI/YRFI"] == "NRFI" else "green"
-        return f'<td style="background-color:{color};color:black">{row["NRFI/YRFI"]}</td>'
+df = pd.DataFrame(games, columns=columns)
+df = df.sort_values("Confidence %", ascending=False)
 
-    # Build HTML manually to color NRFI/YRFI cell
-    html = "<table class='styled-table'>"
-    # Header
-    html += "<tr>" + "".join([f"<th>{col}</th>" for col in df.columns]) + "</tr>"
-    # Rows
-    for _, row in df.iterrows():
-        html += "<tr>"
-        for col in df.columns:
-            if col == "NRFI/YRFI":
-                color = "red" if row[col] == "NRFI" else "green"
-                html += f'<td style="background-color:{color};color:black">{row[col]}</td>'
-            else:
-                html += f"<td>{row[col]}</td>"
-        html += "</tr>"
-    html += "</table>"
+# Apply color to Pick cell
+def color_cells(val, color):
+    return color if val else ""
 
-    # Add table styling with rounded red/blue border
-    st.markdown(
-        """
-        <style>
-        .styled-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            font-size: 16px;
-            text-align: center;
-            border: 2px solid blue;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        .styled-table th, .styled-table td {
-            border: 1px solid red;
-            padding: 8px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+styled = df.style.apply(lambda x: [x["color"]] * len(x), axis=1)
+styled = styled.hide(axis="columns", names="color")
 
-    st.markdown(html, unsafe_allow_html=True)
-
-except Exception as e:
-    st.error(f"Error loading NRFI/YRFI Model: {e}")
+st.dataframe(styled, hide_index=True, use_container_width=True)
