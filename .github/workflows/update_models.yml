@@ -2,7 +2,7 @@ name: Update NRFI Model
 
 on:
   schedule:
-    # Runs at 5 AM, 12 PM, and 5 PM UTC (~Midnight, 7 AM, Noon ET)
+    # Midnight, 7 AM, 12 PM Eastern (~5, 12, 17 UTC)
     - cron: "0 5,12,17 * * *"
   workflow_dispatch:
 
@@ -33,5 +33,5 @@ jobs:
           git config --local user.name "github-actions"
           git config --local user.email "github-actions@github.com"
           git add nrfi_model.csv
-          git commit -m "Automated update NRFI model $(date)" || echo "No changes to commit"
+          git commit -m "Automated NRFI model update $(date)" || echo "No changes to commit"
           git push
