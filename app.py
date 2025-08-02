@@ -53,7 +53,8 @@ st.markdown(
 
 # --- MODEL PAGE TITLE (Editable) ---
 page_title = "MLB Model — Daily Predictions (Table View)"
-st.title(page_title)import streamlit as st
+st.title(page_title)
+import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime
