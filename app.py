@@ -1,4 +1,59 @@
 import streamlit as st
+
+# --- PAGE SETUP ---
+st.set_page_config(page_title="LineupWire Models", layout="wide")
+
+# --- LOGO AT TOP ---
+st.markdown(
+    """
+    <style>
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 10px;
+    }
+    .logo-container img {
+        max-width: 320px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    """
+    <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/YOUR_GITHUB_REPO/main/lineupwire_logo.png" alt="LineupWire Logo">
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- BACK TO HOMEPAGE BUTTON ---
+st.markdown(
+    """
+    <style>
+    .back-button {
+        display: inline-block;
+        padding: 8px 16px;
+        background-color: black;
+        color: white;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .back-button:hover {
+        background-color: #333333;
+    }
+    </style>
+    <a href="https://lineupwire.com" class="back-button">⬅ Back to Homepage</a>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- MODEL PAGE TITLE (Editable) ---
+page_title = "MLB Model — Daily Predictions (Table View)"
+st.title(page_title)import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime
