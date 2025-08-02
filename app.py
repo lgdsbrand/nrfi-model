@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
+import requests
 from datetime import datetime
+import pytz
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="NRFI / YRFI Model", layout="wide")
@@ -21,70 +23,54 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- TITLE ---
-st.markdown("<h1 style='display: inline;'>🔴🟢 NRFI / YRFI Model</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='display: inline; white-space: nowrap;'>🔴🟢 NRFI / YRFI Model</h1>", unsafe_allow_html=True)
 
-# --- TOGGLE BUTTONS ---
-toggle = st.radio("Select View", ["Table View", "Records"], horizontal=True)
+# --- LOAD LIVE MLB SCHEDULE ---
+@st.cache_data(ttl=3600)
+def fetch_nrfi_model():
+    today = datetime.now().strftime("%Y%m%d")
+    url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
+    r = requests.get(url)
+    data = r.json()
+    
+    est = pytz.timezone('US/Eastern')
+    games = []
+    for event in data.get("events", []):
+        game_time_utc = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
+        game_time_est = game_time_utc.astimezone(est).strftime("%I:%M %p")
 
-# --- LOAD DATA ---
-@st.cache_data(ttl=60*60)
-def load_nrfi_model():
-    return pd.read_csv("nrfi_model.csv")
+        competitions = event.get("competitions", [])[0]
+        teams = competitions["competitors"]
+        home_team = next(t["team"]["displayName"] for t in teams if t["homeAway"] == "home")
+        away_team = next(t["team"]["displayName"] for t in teams if t["homeAway"] == "away")
 
-try:
-    df = load_nrfi_model()
-except FileNotFoundError:
-    st.error("NRFI model data not found. Wait for next refresh.")
-    st.stop()
+        # --- SIMPLE NRFI/YRFI MODEL LOGIC (replace with your formula) ---
+        confidence = 70 if len(home_team) % 2 == 0 else 55
+        result = "NRFI" if confidence >= 60 else "YRFI"
 
-# --- CLEAN DATA ---
-if df.columns[0].lower() in ['unnamed: 0', 'index']:
-    df = df.drop(df.columns[0], axis=1)
+        games.append([
+            game_time_est,
+            away_team,
+            home_team,
+            f"{confidence}%",
+            result
+        ])
 
-if 'Confidence' in df.columns:
-    df['Confidence'] = df['Confidence'].map(lambda x: f"{int(x)}%" if pd.notnull(x) else "")
+    df = pd.DataFrame(games, columns=[
+        "Game Time", "Away Team", "Home Team", "Confidence", "NRFI/YRFI"
+    ])
+    return df
 
-# Color only NRFI/YRFI column
+df = fetch_nrfi_model()
+
+# --- Color Cells for NRFI/YRFI Only ---
 def highlight_nrfi(val):
-    if str(val).upper() == 'NRFI':
+    if val == "NRFI":
         return 'background-color: green; color: black; font-weight: bold;'
-    elif str(val).upper() == 'YRFI':
+    elif val == "YRFI":
         return 'background-color: red; color: black; font-weight: bold;'
     return ''
 
 styled_df = df.style.applymap(highlight_nrfi, subset=['NRFI/YRFI'])
 
-# --- AUTO RECORD TRACKING ---
-record_file = "nrfi_records.csv"
-today = datetime.now().date()
-wins = sum(df['NRFI/YRFI'].str.upper() == "NRFI")
-losses = sum(df['NRFI/YRFI'].str.upper() == "YRFI")
-today_record = pd.DataFrame([[today, "NRFI Model", wins, losses,
-                              f"{(wins/(wins+losses))*100:.0f}%"]],
-                              columns=["Date","Model","Wins","Losses","Win%"])
-try:
-    old_records = pd.read_csv(record_file)
-except:
-    old_records = pd.DataFrame(columns=today_record.columns)
-if str(today) not in old_records["Date"].astype(str).values:
-    pd.concat([old_records, today_record], ignore_index=True).to_csv(record_file, index=False)
-
-# --- TOGGLE VIEWS ---
-if toggle == "Table View":
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-elif toggle == "Records":
-    try:
-        rec = pd.read_csv(record_file)
-        rec['Date'] = pd.to_datetime(rec['Date'])
-        rec['Week'] = rec['Date'].dt.isocalendar().week
-        rec['Month'] = rec['Date'].dt.month
-        st.subheader("Daily Records")
-        st.dataframe(rec.sort_values("Date", ascending=False), use_container_width=True, hide_index=True)
-        st.subheader("Weekly Summary")
-        st.dataframe(rec.groupby("Week")[["Wins","Losses"]].sum(), use_container_width=True)
-        st.subheader("Monthly Summary")
-        st.dataframe(rec.groupby("Month")[["Wins","Losses"]].sum(), use_container_width=True)
-    except FileNotFoundError:
-        st.info("No record file yet.")
+st.dataframe(styled_df, use_container_width=True, hide_index=True)
