@@ -1,130 +1,94 @@
 import streamlit as st
+import pandas as pd
 
-# =========================
-# Hide Streamlit default UI
-# =========================
-hide_streamlit_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+# ===== PAGE CONFIG =====
+st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-# =========================
-# Custom Back to Homepage Button
-# =========================
+# Hide Streamlit menu and footer
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
+# Back to Homepage button
 st.markdown(
     """
-    <style>
-        .home-button {
+    <a href="https://lineupwire.com" target="_self">
+        <button style="
             background-color: black;
-            color: white !important;
-            border-radius: 12px;
-            padding: 8px 20px;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
             font-size: 16px;
-            text-decoration: none !important;
-            display: inline-block;
-            margin-bottom: 10px;
-        }
-        .home-button:hover {
-            background-color: #333333;
-            color: white !important;
-        }
-    </style>
-
-    <a class="home-button" href="https://lineupwire.com">⬅ Back to Homepage</a>
+            cursor: pointer;
+        ">Back to Homepage</button>
+    </a>
     """,
     unsafe_allow_html=True
 )
 
-import streamlit as st
-import pandas as pd
-import requests
-from datetime import datetime
-import pytz
-
-hide_streamlit_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    </style>
-"""
-
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-st.set_page_config(page_title="LineupWire NRFI/YRFI Model", layout="wide")
-
 st.title("🔴🟢 NRFI/YRFI Model")
 
-# -----------------------------
-# Fetch MLB Games (ESPN)
-# -----------------------------
-def fetch_espn_games():
-    today = datetime.now().strftime("%Y%m%d")
-    url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
-    resp = requests.get(url)
-    data = resp.json()
+# ===== LOAD DATA (replace with your Google Sheet or data source) =====
+try:
+    df = pd.read_csv("nrfi_model.csv")
 
-    games = []
-    for event in data.get("events", []):
-        comp = event.get("competitions", [])[0]
-        competitors = comp.get("competitors", [])
+    # Format confidence as whole numbers
+    df["Confidence %"] = df["Confidence %"].astype(int)
 
-        away = next((t for t in competitors if t["homeAway"] == "away"), None)
-        home = next((t for t in competitors if t["homeAway"] == "home"), None)
-        if not away or not home:
-            continue
+    # Sort by confidence descending
+    df = df.sort_values("Confidence %", ascending=False)
 
-        game_time = datetime.fromisoformat(event["date"].replace("Z", "+00:00"))
-        game_time = game_time.astimezone(pytz.timezone("US/Eastern")).strftime("%I:%M %p ET")
+    # Create NRFI/YRFI color cells
+    def color_cell(row):
+        color = "red" if row["NRFI/YRFI"] == "NRFI" else "green"
+        return f'<td style="background-color:{color};color:black">{row["NRFI/YRFI"]}</td>'
 
-        games.append({
-            "Game Time": game_time,
-            "Away Team": away["team"]["displayName"],
-            "Home Team": home["team"]["displayName"],
-        })
+    # Build HTML manually to color NRFI/YRFI cell
+    html = "<table class='styled-table'>"
+    # Header
+    html += "<tr>" + "".join([f"<th>{col}</th>" for col in df.columns]) + "</tr>"
+    # Rows
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for col in df.columns:
+            if col == "NRFI/YRFI":
+                color = "red" if row[col] == "NRFI" else "green"
+                html += f'<td style="background-color:{color};color:black">{row[col]}</td>'
+            else:
+                html += f"<td>{row[col]}</td>"
+        html += "</tr>"
+    html += "</table>"
 
-    return pd.DataFrame(games)
-
-# -----------------------------
-# Example NRFI/YRFI Calculation
-# -----------------------------
-def calculate_nrfi_confidence(df):
-    # Simulated: replace with your weighted stats model
-    # Example: average of SP NRFI% + Team NRFI% with modifiers
-    df["Confidence"] = (
-        (df.index.to_series() * 7 + 50) % 41 + 40  # 40% to 80% for demo
+    # Add table styling with rounded red/blue border
+    st.markdown(
+        """
+        <style>
+        .styled-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 16px;
+            text-align: center;
+            border: 2px solid blue;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .styled-table th, .styled-table td {
+            border: 1px solid red;
+            padding: 8px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
     )
-    df["Confidence"] = df["Confidence"].astype(int)
 
-    # Determine NRFI/YRFI (threshold at 50%)
-    df["NRFI/YRFI"] = df["Confidence"].apply(lambda x: "NRFI" if x >= 50 else "YRFI")
-    return df
+    st.markdown(html, unsafe_allow_html=True)
 
-# -----------------------------
-# Fetch & Process Data
-# -----------------------------
-games_df = fetch_espn_games()
-
-if games_df.empty:
-    st.info("No MLB games available right now. Check back after the next refresh.")
-else:
-    games_df = calculate_nrfi_confidence(games_df)
-    games_df = games_df.sort_values(by="Confidence", ascending=False)
-
-    # Color map
-    def color_nrfi(val):
-        if val == "NRFI":
-            return "color: red; font-weight: bold;"
-        else:
-            return "color: green; font-weight: bold;"
-
-    # Format table
-    styled_df = games_df.style.applymap(color_nrfi, subset=["NRFI/YRFI"])
-
-    # Display table without index
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-st.caption("🔄 Auto-refreshes 3×/day. Confidence % are real model outputs.")
+except Exception as e:
+    st.error(f"Error loading NRFI/YRFI Model: {e}")
