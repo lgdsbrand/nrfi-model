@@ -51,9 +51,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- MODEL PAGE TITLE (Editable) ---
-page_title = "MLB Model — Daily Predictions (Table View)"
-st.title(page_title)
 import streamlit as st
 import pandas as pd
 import requests
@@ -62,7 +59,7 @@ import pytz
 
 st.set_page_config(page_title="LineupWire NRFI/YRFI Model", layout="wide")
 
-st.title("🔴🟢 LineupWire NRFI/YRFI Model")
+st.title("🔴🟢 NRFI/YRFI Model")
 
 # -----------------------------
 # Fetch MLB Games (ESPN)
