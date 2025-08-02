@@ -1,52 +1,40 @@
 import streamlit as st
 
-# --- PAGE SETUP ---
-st.set_page_config(page_title="LineupWire Models", layout="wide")
+# =========================
+# Hide Streamlit default UI
+# =========================
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# --- LOGO AT TOP ---
+# =========================
+# Custom Back to Homepage Button
+# =========================
 st.markdown(
     """
     <style>
-    .logo-container {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 10px;
-    }
-    .logo-container img {
-        max-width: 320px;
-    }
+        .home-button {
+            background-color: black;
+            color: white !important;
+            border-radius: 12px;
+            padding: 8px 20px;
+            font-size: 16px;
+            text-decoration: none !important;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .home-button:hover {
+            background-color: #333333;
+            color: white !important;
+        }
     </style>
-    """,
-    unsafe_allow_html=True
-)
 
-st.markdown(
-    """
-    <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/YOUR_GITHUB_REPO/main/lineupwire_logo.png" alt="LineupWire Logo">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-# --- BACK TO HOMEPAGE BUTTON ---
-st.markdown(
-    """
-    <style>
-    .back-button {
-        display: inline-block;
-        padding: 8px 16px;
-        background-color: black;
-        color: white;
-        border-radius: 12px;
-        text-decoration: none;
-        font-weight: bold;
-    }
-    .back-button:hover {
-        background-color: #333333;
-    }
-    </style>
-    <a href="https://lineupwire.com" class="back-button">⬅ Back to Homepage</a>
+    <a class="home-button" href="https://lineupwire.com">⬅ Back to Homepage</a>
     """,
     unsafe_allow_html=True
 )
