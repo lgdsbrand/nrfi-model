@@ -1,46 +1,56 @@
 import streamlit as st
 import pandas as pd
-import os
 
-st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
+st.set_page_config(layout="wide")
 
-# Hide GitHub and menu items
-hide_st_style = """
-<style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-</style>
-"""
-st.markdown(hide_st_style, unsafe_allow_html=True)
-
-# Title
+# ---------------------------
+# BACK TO HOMEPAGE BUTTON
+# ---------------------------
 st.markdown(
-    "<h1 style='text-align: center;'>🔴🟢 NRFI / YRFI Model</h1>",
+    """
+    <a href="https://lineupwire.com" style="
+        display:inline-block;
+        padding:6px 12px;
+        background-color:black;
+        color:white;
+        border-radius:6px;
+        text-decoration:none;
+        font-weight:bold;
+        margin-bottom:12px;
+    ">
+    ⬅ Back to Homepage
+    </a>
+    """,
     unsafe_allow_html=True
 )
 
-csv_file = "nrfi_model.csv"
+st.title("🔴🟢 MLB NRFI / YRFI Model")
 
-# Load CSV safely
-if not os.path.exists(csv_file) or os.path.getsize(csv_file) == 0:
-    st.error("NRFI model data not found. Wait for next refresh.")
-else:
-    df = pd.read_csv(csv_file)
+# ---------------------------
+# LOAD MODEL DATA
+# ---------------------------
+CSV_FILE = "nrfi_model.csv"
 
-    # Ensure correct column names
-    expected_cols = ["Game Time", "Away Team", "Home Team", "Pick", "Confidence"]
-    if list(df.columns) != expected_cols:
-        st.error(f"CSV format mismatch. Expected columns: {expected_cols}")
+try:
+    df = pd.read_csv(CSV_FILE)
+
+    # Ensure NRFI/YRFI column exists
+    if "Pick" not in df.columns:
+        st.error("NRFI model data is missing the 'Pick' column.")
     else:
-        # Color cells: NRFI = green, YRFI = red
-        def color_pick(val):
+        # Color the NRFI/YRFI cells
+        def color_nrfi(val):
             if val == "NRFI":
-                return "background-color: green; color: black;"
+                return "background-color: green; color: black"
             elif val == "YRFI":
-                return "background-color: red; color: black;"
+                return "background-color: red; color: black"
             return ""
 
-        # Apply styling
-        styled_df = df.style.applymap(color_pick, subset=["Pick"])
-        st.dataframe(styled_df, use_container_width=True)
+        # Hide index, apply color
+        st.dataframe(
+            df.style.applymap(color_nrfi, subset=["Pick"]),
+            use_container_width=True
+        )
+
+except FileNotFoundError:
+    st.error("NRFI model data not found. Wait for the next refresh to generate today's CSV.")
