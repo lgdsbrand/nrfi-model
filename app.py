@@ -1,45 +1,34 @@
 import streamlit as st
 import pandas as pd
+import importlib
+import update_models
+
+# Force reload to avoid import cache issues
+importlib.reload(update_models)
 from update_models import get_today_games, calculate_nrfi
 
-# ---------------------------
-# PAGE CONFIG
-# ---------------------------
+# Configure page
 st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-# ---------------------------
-# TITLE + BACK TO HOMEPAGE
-# ---------------------------
-col1, col2 = st.columns([4, 1])
+# Title + Back Button
+col1, col2 = st.columns([3,1])
 with col1:
-    st.title("NRFI/YRFI MODEL")
+    st.title("NRFI/YRFI Model")
 with col2:
-    st.markdown(
-        "<a href='https://lineupwire.com' style='text-decoration:none;'>"
-        "<button style='font-size:16px;padding:6px 12px;margin-top:10px;'>Back to Homepage</button>"
-        "</a>",
-        unsafe_allow_html=True
-    )
+    st.markdown("[⬅ Back to Homepage](https://lineupwire.com)")
 
-st.write(" ")  # Spacer
+# Get games and calculate NRFI
+games = get_today_games()
+df = calculate_nrfi(games)
 
-# ---------------------------
-# LOAD AND DISPLAY MODEL RESULTS
-# ---------------------------
-st.subheader("Today's Games with NRFI/YRFI Predictions")
+# Color-code predictions
+def highlight_predictions(val):
+    if val == "NRFI":
+        return "background-color: red; color: white;"
+    else:
+        return "background-color: green; color: white;"
 
-# Calculate predictions
-try:
-    df = calculate_nrfi()
+styled_df = df.style.applymap(highlight_predictions, subset=["Prediction"])
 
-    # Color NRFI/YRFI cells
-    def highlight_prediction(val):
-        color = 'green' if val == "NRFI" else 'red'
-        return f'color: {color}; font-weight: bold'
-
-    styled_df = df.style.applymap(highlight_prediction, subset=["Prediction"])
-
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-except Exception as e:
-    st.error(f"Error loading NRFI model: {e}")
+# Display without index
+st.dataframe(styled_df, use_container_width=True, hide_index=True)
