@@ -2,53 +2,62 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# ========================
-# NRFI / YRFI MODEL
-# ========================
+# === Helper: Calculate NRFI/YRFI confidence ===
+def calculate_nrfi_confidence(away_team, home_team, away_pitcher, home_pitcher, ballpark_factor=1.0):
+    """
+    Combine multiple stats to compute NRFI confidence.
+    Formula (example weighting):
+      35% Starting Pitcher NRFI rate
+      25% Team 1st Inning Scoring/Allowed
+      20% Opponent NRFI rate
+      20% Ballpark factor (lower favors NRFI)
+    """
 
-def fetch_espn_games():
+    # Dummy stats for example (replace with actual API calls later)
+    away_team_nrfi = 0.55  # Team NRFI rate (away)
+    home_team_nrfi = 0.52  # Team NRFI rate (home)
+    away_pitcher_nrfi = 0.60  # Pitcher's NRFI rate
+    home_pitcher_nrfi = 0.62
+
+    # Combined probability for no runs first inning
+    nrfi_prob = (
+        (away_pitcher_nrfi + home_pitcher_nrfi) * 0.35 +
+        (away_team_nrfi + home_team_nrfi) * 0.25 +
+        ((1-away_team_nrfi) + (1-home_team_nrfi)) * 0.20 +
+        (ballpark_factor * 0.20)
+    ) / 2  # normalize
+
+    nrfi_conf = int(round(nrfi_prob * 100, 0))
+    yrfi_conf = 100 - nrfi_conf
+
+    pick = "NRFI" if nrfi_conf >= yrfi_conf else "YRFI"
+    return pick, nrfi_conf
+
+# === Main function: Pull games & calculate NRFI ===
+def generate_nrfi_model():
     today = datetime.now().strftime("%Y%m%d")
-    url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
-    data = requests.get(url).json()
-    games = []
-    
-    for event in data.get("events", []):
-        comp = event["competitions"][0]
-        game_time = datetime.fromisoformat(comp["date"].replace("Z", "+00:00")).strftime("%I:%M %p ET")
-        away_team = comp["competitors"][1]["team"]["displayName"]
-        home_team = comp["competitors"][0]["team"]["displayName"]
-        
-        # Dummy placeholders for real stats (replace with your real data sources)
-        away_1st_runs = 0.45
-        home_1st_runs_allowed = 0.48
-        away_pitcher_nrfi = 0.72
-        home_pitcher_nrfi = 0.70
-        park_nrfi = 0.55  # e.g., 0.55 = 55% NRFI historically
-        
-        # Calculate NRFI confidence
-        nrfi_prob = (
-            (away_pitcher_nrfi * 0.35) +
-            (home_pitcher_nrfi * 0.35) +
-            ((1 - away_1st_runs) * 0.15) +
-            ((1 - home_1st_runs_allowed) * 0.10) +
-            (park_nrfi * 0.05)
-        )
-        
-        nrfi_percent = round(nrfi_prob * 100)
-        yrfi_percent = 100 - nrfi_percent
-        pick = "NRFI" if nrfi_percent >= 50 else "YRFI"
+    espn_url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
+    data = requests.get(espn_url).json()
 
-        games.append([
-            game_time,
-            away_team,
-            home_team,
-            pick,
-            nrfi_percent
-        ])
-    
-    df = pd.DataFrame(games, columns=["Game Time", "Away Team", "Home Team", "Pick", "Confidence"])
+    games = []
+    for event in data.get("events", []):
+        game_time = datetime.fromisoformat(event["date"][:-1]).strftime("%I:%M %p ET")
+        away_team = event["competitions"][0]["competitors"][1]["team"]["displayName"]
+        home_team = event["competitions"][0]["competitors"][0]["team"]["displayName"]
+
+        # Pull pitchers if available
+        away_pitcher = event["competitions"][0]["competitors"][1].get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
+        home_pitcher = event["competitions"][0]["competitors"][0].get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
+
+        pick, conf = calculate_nrfi_confidence(away_team, home_team, away_pitcher, home_pitcher)
+
+        games.append([game_time, away_team, home_team, pick, conf])
+
+    columns = ["Game Time", "Away Team", "Home Team", "Pick", "Confidence"]
+    df = pd.DataFrame(games, columns=columns)
     df.to_csv("nrfi_model.csv", index=False)
-    print(f"[{datetime.now()}] ✅ NRFI model updated: {len(df)} games.")
+    return df
 
 if __name__ == "__main__":
-    fetch_espn_games()
+    df = generate_nrfi_model()
+    print(f"✅ NRFI Model Updated at {datetime.now()} with {len(df)} games.")
