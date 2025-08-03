@@ -1,36 +1,24 @@
-# trigger rebuild
-
 import streamlit as st
 import pandas as pd
-import importlib
-import update_models
-
-# Force reload to avoid import cache issues
-importlib.reload(update_models)
 from update_models import get_today_games, calculate_nrfi
 
-# Configure page
 st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-# Title + Back Button
-col1, col2 = st.columns([3,1])
-with col1:
-    st.title("NRFI/YRFI Model")
-with col2:
-    st.markdown("[⬅ Back to Homepage](https://lineupwire.com)")
+# Title & Back Button
+st.markdown("<h1 style='display:flex; justify-content:space-between;'>NRFI/YRFI Model</h1>", unsafe_allow_html=True)
+st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)")
 
-# Get games and calculate NRFI
-games = get_today_games()
-df = calculate_nrfi(games)
+# Fetch and display games
+games_df = get_today_games()
 
-# Color-code predictions
-def highlight_predictions(val):
-    if val == "NRFI":
-        return "background-color: red; color: white;"
-    else:
-        return "background-color: green; color: white;"
+if not games_df.empty:
+    results_df = calculate_nrfi(games_df)
+    
+    # Highlight NRFI Green, YRFI Red
+    def highlight_prediction(val):
+        color = "green" if val == "NRFI" else "red"
+        return f"color: {color}; font-weight: bold"
 
-styled_df = df.style.applymap(highlight_predictions, subset=["Prediction"])
-
-# Display without index
-st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(results_df.style.applymap(highlight_prediction, subset=["Prediction"]), use_container_width=True)
+else:
+    st.warning("No MLB games found for today.")
