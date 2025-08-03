@@ -1,56 +1,20 @@
 import streamlit as st
 import pandas as pd
+from update_models import run_nrfi_model
 
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="NRFI Model", layout="wide")
+st.title("MLB NRFI / YRFI Model")
 
-# ---------------------------
-# BACK TO HOMEPAGE BUTTON
-# ---------------------------
-st.markdown(
-    """
-    <a href="https://lineupwire.com" style="
-        display:inline-block;
-        padding:6px 12px;
-        background-color:black;
-        color:white;
-        border-radius:6px;
-        text-decoration:none;
-        font-weight:bold;
-        margin-bottom:12px;
-    ">
-    ⬅ Back to Homepage
-    </a>
-    """,
-    unsafe_allow_html=True
-)
+st.write("Daily NRFI model with TheCrowdsLine.ai data.")
 
-st.title("🔴🟢 MLB NRFI / YRFI Model")
+df = run_nrfi_model()
 
-# ---------------------------
-# LOAD MODEL DATA
-# ---------------------------
-CSV_FILE = "nrfi_model.csv"
+# Apply color styling for NRFI (green) and YRFI (red)
+def highlight_pick(val):
+    if val == "NRFI":
+        return "background-color: lightgreen; color: black"
+    elif val == "YRFI":
+        return "background-color: lightcoral; color: black"
+    return ""
 
-try:
-    df = pd.read_csv(CSV_FILE)
-
-    # Ensure NRFI/YRFI column exists
-    if "Pick" not in df.columns:
-        st.error("NRFI model data is missing the 'Pick' column.")
-    else:
-        # Color the NRFI/YRFI cells
-        def color_nrfi(val):
-            if val == "NRFI":
-                return "background-color: green; color: black"
-            elif val == "YRFI":
-                return "background-color: red; color: black"
-            return ""
-
-        # Hide index, apply color
-        st.dataframe(
-            df.style.applymap(color_nrfi, subset=["Pick"]),
-            use_container_width=True
-        )
-
-except FileNotFoundError:
-    st.error("NRFI model data not found. Wait for the next refresh to generate today's CSV.")
+st.dataframe(df.style.applymap(highlight_pick, subset=["Pick"]))
