@@ -1,45 +1,18 @@
-import requests
 import pandas as pd
+import requests
 from datetime import datetime
 
-# Load real stats from CSVs
-team_stats = pd.read_csv("team_nrfi.csv")
-pitcher_stats = pd.read_csv("pitcher_nrfi.csv")
+# -----------------------------
+# Load CSVs with real stats
+# -----------------------------
+team_df = pd.read_csv("team_nrfi.csv")        # Columns: Team, NRFI%
+pitcher_df = pd.read_csv("pitcher_nrfi.csv")  # Columns: Pitcher, NRFI%, FirstInningERA
+park_factors = pd.read_csv("ballpark_factors.csv")  # Optional: Ballpark, Factor
 
-def fetch_weather_factor(event):
-    """Returns a weather/ballpark factor for NRFI %"""
-    comp = event["competitions"][0]
-    venue = comp.get("venue", {})
-    weather = comp.get("weather", {})
-
-    # Default neutral
-    factor = 0
-
-    # Dome boost
-    if "indoor" in venue.get("fullName", "").lower() or venue.get("indoor", False):
-        return 0.05
-
-    # Weather adjustments
-    wind_speed = weather.get("windSpeed", 0)
-    condition = weather.get("condition", "").lower()
-
-    if wind_speed and "out" in condition:
-        factor -= 0.05
-    if "rain" in condition or "shower" in condition:
-        factor -= 0.05
-
-    return factor
-
-def pitcher_era_factor(era):
-    """Converts 1st inning ERA into NRFI confidence adjustment"""
-    if era <= 2.0:
-        return 0.10
-    elif era <= 3.5:
-        return 0.0
-    else:
-        return -0.10
-
-def run_nrfi_model():
+# -----------------------------
+# Fetch today's games from ESPN
+# -----------------------------
+def get_today_games():
     today = datetime.now().strftime("%Y%m%d")
     url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
     resp = requests.get(url).json()
@@ -54,35 +27,77 @@ def run_nrfi_model():
         home_team = home["team"]["displayName"]
         away_team = away["team"]["displayName"]
 
+        # Grab starting pitchers
         home_pitcher = home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
         away_pitcher = away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
-
-        # Get real stats from CSVs
-        home_team_stats = team_stats[team_stats["Team"] == home_team].iloc[0]
-        away_team_stats = team_stats[team_stats["Team"] == away_team].iloc[0]
-
-        home_pitcher_stats = pitcher_stats[pitcher_stats["Pitcher"] == home_pitcher].iloc[0]
-        away_pitcher_stats = pitcher_stats[pitcher_stats["Pitcher"] == away_pitcher].iloc[0]
-
-        # Weighted NRFI formula
-        team_component = (home_team_stats["NRFI%"] + away_team_stats["NRFI%"]) / 2 * 0.25
-        pitcher_component = (home_pitcher_stats["NRFI%"] + away_pitcher_stats["NRFI%"]) / 2 * 0.35
-        era_component = (
-            pitcher_era_factor(home_pitcher_stats["FirstInningERA"]) +
-            pitcher_era_factor(away_pitcher_stats["FirstInningERA"])
-        ) / 2 * 100 * 0.15
-        weather_component = fetch_weather_factor(event) * 100 * 0.10
-
-        nrfi_pct = round(team_component + pitcher_component + era_component + weather_component, 1)
-        nrfi_pct = max(min(nrfi_pct, 99), 1)
 
         games.append({
             "Game Time": game_time,
             "Matchup": f"{away_team} @ {home_team}",
-            "Pitchers": f"{away_pitcher} vs {home_pitcher}",
-            "NRFI %": nrfi_pct
+            "Home Team": home_team,
+            "Away Team": away_team,
+            "Home Pitcher": home_pitcher,
+            "Away Pitcher": away_pitcher
         })
 
-    df = pd.DataFrame(games)
-    df = df.sort_values(by="NRFI %", ascending=False).reset_index(drop=True)
-    return df
+    return pd.DataFrame(games)
+
+# -----------------------------
+# Compute NRFI/YRFI Score
+# -----------------------------
+def calculate_nrfi(df):
+    results = []
+    for _, row in df.iterrows():
+        home_team = row["Home Team"]
+        away_team = row["Away Team"]
+        home_pitcher = row["Home Pitcher"]
+        away_pitcher = row["Away Pitcher"]
+
+        # Lookup stats (fallback to 50 if not found)
+        team_home_nrfi = team_df.loc[team_df["Team"] == home_team, "NRFI%"].max() if home_team in team_df["Team"].values else 50
+        team_away_nrfi = team_df.loc[team_df["Team"] == away_team, "NRFI%"].max() if away_team in team_df["Team"].values else 50
+
+        pitcher_home_nrfi = pitcher_df.loc[pitcher_df["Pitcher"] == home_pitcher, "NRFI%"].max() if home_pitcher in pitcher_df["Pitcher"].values else 50
+        pitcher_away_nrfi = pitcher_df.loc[pitcher_df["Pitcher"] == away_pitcher, "NRFI%"].max() if away_pitcher in pitcher_df["Pitcher"].values else 50
+
+        # Ballpark factor (0 = neutral)
+        park_factor = park_factors.loc[park_factors["Ballpark"] == row["Matchup"].split(" @ ")[1], "Factor"].max() if row["Matchup"].split(" @ ")[1] in park_factors["Ballpark"].values else 0
+
+        # Weighted NRFI Score (simple average + ballpark tweak)
+        nrfi_score = (
+            team_home_nrfi * 0.25 +
+            team_away_nrfi * 0.25 +
+            pitcher_home_nrfi * 0.25 +
+            pitcher_away_nrfi * 0.25
+        ) + park_factor
+
+        nrfi_score = max(0, min(100, nrfi_score))  # Clamp 0-100
+
+        # Determine NRFI or YRFI
+        if nrfi_score >= 60:
+            prediction = "NRFI"
+            confidence = nrfi_score
+        else:
+            prediction = "YRFI"
+            confidence = 100 - nrfi_score
+
+        results.append({
+            "Game Time": row["Game Time"],
+            "Matchup": row["Matchup"],
+            "Pitchers": f"{row['Away Pitcher']} vs {row['Home Pitcher']}",
+            "Prediction": prediction,
+            "Confidence %": round(confidence, 1)
+        })
+
+    results_df = pd.DataFrame(results)
+    results_df = results_df.sort_values(by="Confidence %", ascending=False).reset_index(drop=True)
+    return results_df
+
+# -----------------------------
+# Main Execution
+# -----------------------------
+if __name__ == "__main__":
+    games_df = get_today_games()
+    final_df = calculate_nrfi(games_df)
+    final_df.to_csv("nrfi_model.csv", index=False)
+    print(final_df)
