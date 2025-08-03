@@ -1,43 +1,15 @@
 import pandas as pd
 import requests
 from datetime import datetime
+from bs4 import BeautifulSoup
 
-# === Helper: Calculate NRFI/YRFI confidence ===
-def calculate_nrfi_confidence(away_team, home_team, away_pitcher, home_pitcher, ballpark_factor=1.0):
-    """
-    Combine multiple stats to compute NRFI confidence.
-    Formula (example weighting):
-      35% Starting Pitcher NRFI rate
-      25% Team 1st Inning Scoring/Allowed
-      20% Opponent NRFI rate
-      20% Ballpark factor (lower favors NRFI)
-    """
-
-    # Dummy stats for example (replace with actual API calls later)
-    away_team_nrfi = 0.55  # Team NRFI rate (away)
-    home_team_nrfi = 0.52  # Team NRFI rate (home)
-    away_pitcher_nrfi = 0.60  # Pitcher's NRFI rate
-    home_pitcher_nrfi = 0.62
-
-    # Combined probability for no runs first inning
-    nrfi_prob = (
-        (away_pitcher_nrfi + home_pitcher_nrfi) * 0.35 +
-        (away_team_nrfi + home_team_nrfi) * 0.25 +
-        ((1-away_team_nrfi) + (1-home_team_nrfi)) * 0.20 +
-        (ballpark_factor * 0.20)
-    ) / 2  # normalize
-
-    nrfi_conf = int(round(nrfi_prob * 100, 0))
-    yrfi_conf = 100 - nrfi_conf
-
-    pick = "NRFI" if nrfi_conf >= yrfi_conf else "YRFI"
-    return pick, nrfi_conf
-
-# === Main function: Pull games & calculate NRFI ===
-def generate_nrfi_model():
+# -------------------------
+# 1. Fetch MLB Schedule
+# -------------------------
+def fetch_mlb_schedule():
     today = datetime.now().strftime("%Y%m%d")
-    espn_url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
-    data = requests.get(espn_url).json()
+    url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
+    data = requests.get(url).json()
 
     games = []
     for event in data.get("events", []):
@@ -45,19 +17,77 @@ def generate_nrfi_model():
         away_team = event["competitions"][0]["competitors"][1]["team"]["displayName"]
         home_team = event["competitions"][0]["competitors"][0]["team"]["displayName"]
 
-        # Pull pitchers if available
-        away_pitcher = event["competitions"][0]["competitors"][1].get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
-        home_pitcher = event["competitions"][0]["competitors"][0].get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
+        # Default placeholders for pitchers (will fill if available)
+        away_pitcher = "TBD"
+        home_pitcher = "TBD"
 
-        pick, conf = calculate_nrfi_confidence(away_team, home_team, away_pitcher, home_pitcher)
+        # Extract starting pitchers if available
+        for comp in event["competitions"][0]["competitors"]:
+            if "startingPitcher" in comp:
+                pitcher_name = comp["startingPitcher"]["athlete"]["displayName"]
+                if comp["homeAway"] == "home":
+                    home_pitcher = pitcher_name
+                else:
+                    away_pitcher = pitcher_name
 
-        games.append([game_time, away_team, home_team, pick, conf])
+        games.append([game_time, away_team, home_team, away_pitcher, home_pitcher])
+    return pd.DataFrame(games, columns=["Game Time", "Away Team", "Home Team", "Away Pitcher", "Home Pitcher"])
 
-    columns = ["Game Time", "Away Team", "Home Team", "Pick", "Confidence"]
-    df = pd.DataFrame(games, columns=columns)
+
+# -------------------------
+# 2. Scrape Team NRFI Stats
+# -------------------------
+def fetch_team_nrfi_stats():
+    url = "https://www.teamrankings.com/mlb/stat/1st-inning-runs-per-game"
+    page = requests.get(url).text
+    soup = BeautifulSoup(page, "html.parser")
+
+    table = soup.find("table", {"class": "tr-table"})
+    rows = table.find_all("tr")[1:]
+
+    stats = {}
+    for row in rows:
+        cols = [c.text.strip() for c in row.find_all("td")]
+        if len(cols) >= 2:
+            team = cols[0]
+            first_inning_runs = float(cols[1])
+            stats[team] = first_inning_runs
+    return stats
+
+
+# -------------------------
+# 3. NRFI Model Formula
+# -------------------------
+def generate_nrfi_model():
+    schedule = fetch_mlb_schedule()
+    team_stats = fetch_team_nrfi_stats()
+
+    results = []
+    for _, row in schedule.iterrows():
+        away_team = row["Away Team"]
+        home_team = row["Home Team"]
+
+        away_rpg = team_stats.get(away_team, 0.5)
+        home_rpg = team_stats.get(home_team, 0.5)
+
+        # Convert 1st inning runs per game to NRFI probability
+        away_nrfi = max(0.2, 1 - away_rpg / 1.0)
+        home_nrfi = max(0.2, 1 - home_rpg / 1.0)
+
+        nrfi_prob = round((away_nrfi * home_nrfi) * 100, 1)
+        pick = "NRFI" if nrfi_prob >= 55 else "YRFI"
+
+        results.append([
+            row["Game Time"], away_team, home_team, pick, nrfi_prob
+        ])
+
+    df = pd.DataFrame(results, columns=["Game Time", "Away Team", "Home Team", "Pick", "Confidence"])
     df.to_csv("nrfi_model.csv", index=False)
-    return df
+    print("✅ NRFI model updated with real data!")
 
+
+# -------------------------
+# 4. Run Daily
+# -------------------------
 if __name__ == "__main__":
-    df = generate_nrfi_model()
-    print(f"✅ NRFI Model Updated at {datetime.now()} with {len(df)} games.")
+    generate_nrfi_model()
