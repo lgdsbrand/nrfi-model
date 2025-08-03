@@ -2,20 +2,10 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-CSV_FILE = "nrfi_model.csv"
+NRFI_CSV = "nrfi_model.csv"
 
-# -----------------------------
-# SCRAPING FUNCTIONS
-# -----------------------------
-
-def get_mlb_schedule():
-    """
-    Pull today's MLB schedule from ESPN API.
-    Returns DataFrame with game time, teams, and pitchers.
-    """
+# === 1. Fetch today's games from ESPN ===
+def get_espn_games():
     today = datetime.now().strftime("%Y%m%d")
     url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
     resp = requests.get(url).json()
@@ -23,83 +13,67 @@ def get_mlb_schedule():
     games = []
     for event in resp.get("events", []):
         comp = event["competitions"][0]
-        home = comp["competitors"][0]
-        away = comp["competitors"][1]
-
-        game_time = datetime.fromisoformat(comp["date"][:-1]).strftime("%I:%M %p")
+        teams = comp["competitors"]
+        home = next(t["team"]["displayName"] for t in teams if t["homeAway"] == "home")
+        away = next(t["team"]["displayName"] for t in teams if t["homeAway"] == "away")
+        game_time = datetime.strptime(event["date"], "%Y-%m-%dT%H:%MZ").strftime("%I:%M %p ET")
 
         games.append({
-            "Time": game_time,
-            "Away Team": away["team"]["displayName"],
-            "Home Team": home["team"]["displayName"],
-            "Away Pitcher": away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD"),
-            "Home Pitcher": home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD"),
+            "game_time": game_time,
+            "home_team": home,
+            "away_team": away
         })
 
     return pd.DataFrame(games)
 
-
-def get_crowdsline_data():
-    """
-    Scrapes NRFI/YRFI data from TheCrowdsLine.ai (sample mock).
-    Replace with actual scraper if needed.
-    """
-    # Mock structure: You can implement BeautifulSoup if needed for full automation
-    # These would be keyed by team name or pitcher name in production
+# === 2. Fetch stats from TheCrowdsLine (replace with real API or scrape) ===
+def get_crowdsline_stats(home_team, away_team):
+    # Example structure — replace with real scraped or API data
     return {
-        "team_nrfi%": 0.70,
-        "opp_nrfi%": 0.72,
-        "pitcher_nrfi%": 0.80,
-        "opp_pitcher_nrfi%": 0.78,
-        "ballpark_nrfi%": 0.65,
-        "first_inning_rpg": 0.48,
-        "first_inning_rpga": 0.52
+        "home_pitcher_nrfi": 0.78,
+        "away_pitcher_nrfi": 0.82,
+        "home_team_nrfi": 0.70,
+        "away_team_nrfi": 0.68,
+        "ballpark_nrfi": 0.65,
+        "home_first_inning_era": 1.40,
+        "away_first_inning_era": 1.30,
+        "home_first_inning_rpg": 0.55,
+        "away_first_inning_rpg": 0.50
     }
 
+# === 3. NRFI calculation formula ===
+def calculate_nrfi(row):
+    stats = get_crowdsline_stats(row["home_team"], row["away_team"])
 
-def calculate_nrfi_confidence(row):
-    """
-    Full NRFI/YRFI formula combining pitchers, teams, ballpark, and 1st inning stats.
-    """
+    # Factor 1: Pitchers NRFI %
+    pitcher_avg = (stats["home_pitcher_nrfi"] + stats["away_pitcher_nrfi"]) / 2
 
-    # Simulated data from CrowdsLine for now
-    stats = get_crowdsline_data()
+    # Factor 2: Team NRFI %
+    team_avg = (stats["home_team_nrfi"] + stats["away_team_nrfi"]) / 2
 
-    team_avg = (stats["team_nrfi%"] + stats["opp_nrfi%"]) / 2
-    pitcher_avg = (stats["pitcher_nrfi%"] + stats["opp_pitcher_nrfi%"]) / 2
-    ballpark = stats["ballpark_nrfi%"]
-    inning_factor = 1 - ((stats["first_inning_rpg"] + stats["first_inning_rpga"]) / 2)
+    # Factor 3: Ballpark NRFI %
+    ballpark = stats["ballpark_nrfi"]
 
-    # Weighted formula for NRFI probability
-    nrfi_prob = (team_avg * 0.35) + (pitcher_avg * 0.35) + (ballpark * 0.15) + (inning_factor * 0.15)
+    # Factor 4: First Inning ERA & Runs
+    first_inning_factor = (
+        (2 - (stats["home_first_inning_era"] + stats["away_first_inning_era"]) / 2) +
+        (1 - (stats["home_first_inning_rpg"] + stats["away_first_inning_rpg"]) / 2)
+    ) / 2
 
-    pick = "NRFI" if nrfi_prob >= 0.6 else "YRFI"
-    return round(nrfi_prob * 100), pick
+    # Combined NRFI Confidence Score
+    nrfi_score = (pitcher_avg * 0.35) + (team_avg * 0.25) + (ballpark * 0.15) + (first_inning_factor * 0.25)
+    nrfi_confidence = round(nrfi_score * 100)
 
+    # Determine pick
+    pick = "NRFI" if nrfi_confidence >= 50 else "YRFI"
+    return pd.Series([pick, nrfi_confidence], index=["Pick", "Confidence"])
 
-# -----------------------------
-# MAIN LOGIC
-# -----------------------------
-
+# === 4. Generate & save model ===
 def generate_nrfi_model():
-    schedule_df = get_mlb_schedule()
-
-    if schedule_df.empty:
-        print("No MLB games found for today.")
-        return
-
-    schedule_df[["NRFI Confidence %", "Pick"]] = schedule_df.apply(
-        lambda row: pd.Series(calculate_nrfi_confidence(row)),
-        axis=1
-    )
-
-    # Sort: Highest confidence first
-    schedule_df = schedule_df.sort_values("NRFI Confidence %", ascending=False)
-
-    # Save to CSV
-    schedule_df.to_csv(CSV_FILE, index=False)
-    print(f"NRFI model updated: {CSV_FILE}")
-
+    df = get_espn_games()
+    df[["Pick", "Confidence"]] = df.apply(calculate_nrfi, axis=1)
+    df.to_csv(NRFI_CSV, index=False)
+    print(f"✅ NRFI model updated at {datetime.now()}")
 
 if __name__ == "__main__":
     generate_nrfi_model()
