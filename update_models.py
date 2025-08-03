@@ -1,21 +1,26 @@
 import pandas as pd
 import requests
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 # -----------------------------
-# CONFIG
+# GOOGLE SHEETS CONFIG
 # -----------------------------
-CSV_FILE = "nrfi_model.csv"
+SHEET_NAME = "updateMLBDAILYMODEL"
+TAB_NAME = "NRFI"
+
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
+client = gspread.authorize(creds)
+sheet = client.open(SHEET_NAME).worksheet(TAB_NAME)
 
 # -----------------------------
 # SCRAPING FUNCTIONS
 # -----------------------------
 
 def get_mlb_schedule():
-    """
-    Pull today's MLB schedule from ESPN API.
-    Returns DataFrame with game time, teams, and pitchers.
-    """
+    """Pull today's MLB schedule from ESPN API"""
     today = datetime.now().strftime("%Y%m%d")
     url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
     resp = requests.get(url).json()
@@ -29,93 +34,62 @@ def get_mlb_schedule():
         game_time = datetime.fromisoformat(comp["date"][:-1]).strftime("%I:%M %p")
 
         games.append({
-            "Time": game_time,
-            "Away Team": away["team"]["displayName"],
-            "Home Team": home["team"]["displayName"],
-            "Away Pitcher": away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD"),
-            "Home Pitcher": home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD"),
+            "Game": f"{away['team']['abbreviation']} @ {home['team']['abbreviation']}",
+            "Pitchers": f"{away.get('probablePitcher', {}).get('displayName','TBD')} vs {home.get('probablePitcher', {}).get('displayName','TBD')}",
+            "Team NR": "TBD",
+            "Pitcher NRFI": "TBD",
+            "Model %": "TBD",
+            "Pick": "TBD",
         })
-
     return pd.DataFrame(games)
 
-
-def get_crowdsline_stats(home_team, away_team):
+def get_crowdsline_data():
     """
-    Stub function to simulate per-game NRFI stats.
-    Replace this with a proper scrape/API pull from TheCrowdsLine.ai or other source.
+    Pull NRFI/YRFI data from TheCrowdsLine.ai API.
+    This assumes theCrowdsLine.ai provides JSON with team & pitcher NRFI/YRFI % and 1st inning ERA.
     """
-    import random
-
-    # Simulate variation
-    return {
-        "home_team_nrfi%": random.uniform(0.55, 0.85),
-        "away_team_nrfi%": random.uniform(0.55, 0.85),
-        "home_pitcher_nrfi%": random.uniform(0.6, 0.9),
-        "away_pitcher_nrfi%": random.uniform(0.6, 0.9),
-        "ballpark_nrfi%": random.uniform(0.5, 0.75),
-        "home_pitcher_era_1st": random.uniform(0.0, 1.5),
-        "away_pitcher_era_1st": random.uniform(0.0, 1.5),
-        "first_inning_rpg_home": random.uniform(0.4, 0.7),
-        "first_inning_rpg_away": random.uniform(0.4, 0.7),
-    }
-
-
-def calculate_nrfi_confidence(row):
-    """
-    Full NRFI/YRFI formula combining pitchers, teams, ballpark, and 1st inning stats.
-    Returns (confidence %, pick)
-    """
-    stats = get_crowdsline_stats(row["Home Team"], row["Away Team"])
-
-    # Calculate averages
-    team_avg = (stats["home_team_nrfi%"] + stats["away_team_nrfi%"]) / 2
-    pitcher_avg = (stats["home_pitcher_nrfi%"] + stats["away_pitcher_nrfi%"]) / 2
-    ballpark = stats["ballpark_nrfi%"]
-
-    # Factor in 1st inning ERA as a negative factor for NRFI
-    era_factor = 1 - ((stats["home_pitcher_era_1st"] + stats["away_pitcher_era_1st"]) / 6)  # normalize ~0-1
-    inning_factor = 1 - ((stats["first_inning_rpg_home"] + stats["first_inning_rpg_away"]) / 2)
-
-    # Weighted formula for NRFI probability
-    nrfi_prob = (
-        team_avg * 0.30 +
-        pitcher_avg * 0.35 +
-        ballpark * 0.10 +
-        era_factor * 0.15 +
-        inning_factor * 0.10
-    )
-
-    # Clamp between 0 and 1
-    nrfi_prob = max(0, min(nrfi_prob, 1))
-
-    pick = "NRFI" if nrfi_prob >= 0.6 else "YRFI"
-    return round(nrfi_prob * 100), pick
-
+    url = "https://thecrowdsline.ai/mlb/nrfi-data"  # Example endpoint
+    resp = requests.get(url).json()
+    return pd.DataFrame(resp)
 
 # -----------------------------
-# MAIN LOGIC
+# NRFI CALCULATION LOGIC
 # -----------------------------
 
-def generate_nrfi_model():
-    schedule_df = get_mlb_schedule()
+def calculate_nrfi(df_schedule, df_crowds):
+    """
+    Merge schedule with NRFI data and calculate model % and pick
+    """
+    df = df_schedule.copy()
 
-    if schedule_df.empty:
-        print("No MLB games found for today.")
-        return
+    # Merge logic example (requires matching by team abbreviations)
+    # Assumes df_crowds has columns: AwayTeam, HomeTeam, AwayNRFI%, HomeNRFI%, AwayPitcherNRFI%, HomePitcherNRFI%
+    df = df.merge(df_crowds, how="left", left_on="Game", right_on="Matchup")
 
-    # Compute NRFI/YRFI predictions
-    schedule_df[["Confidence %", "Pick"]] = schedule_df.apply(
-        lambda row: pd.Series(calculate_nrfi_confidence(row)),
-        axis=1
-    )
+    # Calculate model probability for NRFI
+    # Simple formula: Combine team + pitcher NRFI averages
+    df["Model %"] = (
+        df["AwayNRFI%"] * df["AwayPitcherNRFI%"] +
+        df["HomeNRFI%"] * df["HomePitcherNRFI%"]
+    ) / 2
 
-    # Sort highest confidence first
-    schedule_df = schedule_df.sort_values("Confidence %", ascending=False)
+    df["Pick"] = df["Model %"].apply(lambda x: "NRFI" if x >= 0.55 else "YRFI")
+    return df[["Game", "Pitchers", "Team NR", "Pitcher NRFI", "Model %", "Pick"]]
 
-    # Save to CSV for Streamlit app
-    schedule_df.to_csv(CSV_FILE, index=False)
-    print(f"NRFI model updated: {CSV_FILE}")
+# -----------------------------
+# MAIN UPDATE FUNCTION
+# -----------------------------
 
+def run_nrfi_model():
+    schedule = get_mlb_schedule()
+    crowds_data = get_crowdsline_data()
+    df = calculate_nrfi(schedule, crowds_data)
+
+    # Push to Google Sheet
+    sheet.clear()
+    sheet.update([df.columns.values.tolist()] + df.values.tolist())
+    return df
 
 if __name__ == "__main__":
-    generate_nrfi_model()
+    df = run_nrfi_model()
+    print("NRFI model updated to Google Sheet.")
