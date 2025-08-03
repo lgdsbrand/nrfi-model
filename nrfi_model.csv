@@ -1,16 +1,16 @@
-Game Time,Away Team,Home Team,Pick,Confidence
-05:10 PM ET,Los Angeles Dodgers,Tampa Bay Rays,NRFI,70
-06:20 PM ET,Baltimore Orioles,Chicago Cubs,NRFI,70
-07:07 PM ET,Kansas City Royals,Toronto Blue Jays,NRFI,70
-07:10 PM ET,Pittsburgh Pirates,Colorado Rockies,NRFI,70
-08:05 PM ET,Detroit Tigers,Philadelphia Phillies,NRFI,70
-08:05 PM ET,Milwaukee Brewers,Washington Nationals,NRFI,70
-08:10 PM ET,Houston Astros,Boston Red Sox,NRFI,70
-08:10 PM ET,Minnesota Twins,Cleveland Guardians,NRFI,70
-08:10 PM ET,New York Yankees,Miami Marlins,NRFI,70
-08:10 PM ET,San Francisco Giants,New York Mets,NRFI,70
-08:10 PM ET,Texas Rangers,Seattle Mariners,NRFI,70
-11:15 PM ET,Atlanta Braves,Cincinnati Reds,NRFI,70
-02:05 AM ET,Arizona Diamondbacks,Athletics,NRFI,70
-02:07 AM ET,Chicago White Sox,Los Angeles Angels,NRFI,70
-02:10 AM ET,St. Louis Cardinals,San Diego Padres,NRFI,70
+Time,Away Team,Home Team,Away Pitcher,Home Pitcher,NRFI Confidence %,Pick
+11:15 PM,Atlanta Braves,Cincinnati Reds,TBD,TBD,70,NRFI
+03:35 PM,Houston Astros,Boston Red Sox,Framber Valdez,Lucas Giolito,70,NRFI
+04:10 PM,Los Angeles Dodgers,Tampa Bay Rays,Yoshinobu Yamamoto,Joe Boyle,70,NRFI
+05:35 PM,Milwaukee Brewers,Washington Nationals,Logan Henderson,Brad Lord,70,NRFI
+05:37 PM,Kansas City Royals,Toronto Blue Jays,Seth Lugo,Chris Bassitt,70,NRFI
+05:40 PM,Minnesota Twins,Cleveland Guardians,Jose Urena,Joey Cantillo,70,NRFI
+05:40 PM,New York Yankees,Miami Marlins,Luis Gil,Edward Cabrera,70,NRFI
+05:40 PM,San Francisco Giants,New York Mets,Carson Whisenhunt,Frankie Montas,70,NRFI
+06:20 PM,Baltimore Orioles,Chicago Cubs,Brandon Young,Colin Rea,70,NRFI
+07:10 PM,Pittsburgh Pirates,Colorado Rockies,Mitch Keller,Bradley Blalock,70,NRFI
+08:05 PM,Arizona Diamondbacks,Athletics,Eduardo Rodriguez,Jack Perkins,70,NRFI
+08:07 PM,Chicago White Sox,Los Angeles Angels,Sean Burke,Jack Kochanowicz,70,NRFI
+08:10 PM,St. Louis Cardinals,San Diego Padres,Andre Pallante,Dylan Cease,70,NRFI
+08:10 PM,Texas Rangers,Seattle Mariners,Jacob deGrom,Logan Evans,70,NRFI
+11:00 PM,Detroit Tigers,Philadelphia Phillies,Charlie Morton,Cristopher Sanchez,70,NRFI
