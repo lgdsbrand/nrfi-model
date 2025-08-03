@@ -2,23 +2,42 @@ import streamlit as st
 import pandas as pd
 from update_models import get_today_games, calculate_nrfi
 
+# -----------------------------
+# Page Configuration
+# -----------------------------
 st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-# Title & Back Button
-st.markdown("<h1 style='display:flex; justify-content:space-between;'>NRFI/YRFI Model</h1>", unsafe_allow_html=True)
+# Title and Back to Homepage
+st.markdown("## NRFI/YRFI Model")
 st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)")
 
-# Fetch and display games
+# -----------------------------
+# Load Data and Run Model
+# -----------------------------
+st.write("Fetching today's MLB games and calculating NRFI/YRFI confidence...")
+
 games_df = get_today_games()
 
-if not games_df.empty:
-    results_df = calculate_nrfi(games_df)
-    
-    # Highlight NRFI Green, YRFI Red
-    def highlight_prediction(val):
-        color = "green" if val == "NRFI" else "red"
-        return f"color: {color}; font-weight: bold"
-
-    st.dataframe(results_df.style.applymap(highlight_prediction, subset=["Prediction"]), use_container_width=True)
+if games_df.empty:
+    st.warning("No MLB games found for today. Check the ESPN API or try again later.")
 else:
-    st.warning("No MLB games found for today.")
+    results_df = calculate_nrfi(games_df)
+
+    # Color NRFI green and YRFI red
+    def color_predictions(val):
+        if val == "NRFI":
+            return "color: green; font-weight: bold"
+        elif val == "YRFI":
+            return "color: red; font-weight: bold"
+        return ""
+
+    # Format confidence percentage
+    if "Confidence %" in results_df.columns:
+        results_df["Confidence %"] = results_df["Confidence %"].apply(lambda x: f"{x}%" if x != "" else "")
+
+    # Display table without index
+    st.dataframe(
+        results_df.style.applymap(color_predictions, subset=["Prediction"]),
+        use_container_width=True,
+        hide_index=True
+    )
