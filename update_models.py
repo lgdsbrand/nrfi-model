@@ -6,69 +6,71 @@ PITCHER_FILE = "pitcher_nrfi.csv"
 
 def get_today_games():
     """
-    Combines team and pitcher CSVs to simulate today's games.
-    Later replace with live ESPN/FanDuel scraping for real matchups.
+    Combines team and pitcher CSV data to simulate today's matchups.
+    Returns a list of dictionaries for NRFI/YRFI calculations.
     """
     teams = pd.read_csv(TEAM_FILE)
     pitchers = pd.read_csv(PITCHER_FILE)
 
     games = []
-    for i in range(min(len(teams), len(pitchers))):
-        team = teams.iloc[i]
-        pitcher = pitchers.iloc[i]
+    for i in range(min(len(teams), len(pitchers), len(pitchers)-1)):
+        home_team = teams.iloc[i % len(teams)]
+        away_team = teams.iloc[(i+1) % len(teams)]
+
+        home_pitcher = pitchers.iloc[i % len(pitchers)]
+        away_pitcher = pitchers.iloc[(i+1) % len(pitchers)]
 
         games.append({
-            "Game Time": f"{5+i}:40 PM",  # Placeholder time
-            "Matchup": f"{team['Team']} vs Opponent",  # Placeholder opponent
-            "Pitchers": pitcher['Pitcher'],
-            "Team": team['Team']
+            "Game Time": f"{3+i}:05 PM",
+            "Matchup": f"{away_team['Team']} @ {home_team['Team']}",
+            "Pitchers": f"{away_pitcher['Pitcher']} vs {home_pitcher['Pitcher']}",
+            "home_team": home_team['Team'],
+            "away_team": away_team['Team'],
+            "home_pitcher": home_pitcher['Pitcher'],
+            "away_pitcher": away_pitcher['Pitcher']
         })
 
-    return pd.DataFrame(games)
+    return games
 
 
-def calculate_nrfi():
+def calculate_nrfi(games):
     """
-    Calculate NRFI/YRFI % and Confidence Score using team + pitcher stats.
+    Calculates NRFI/YRFI % and confidence for each game.
     """
-
     teams = pd.read_csv(TEAM_FILE)
     pitchers = pd.read_csv(PITCHER_FILE)
 
     results = []
+    for game in games:
+        home_team_stats = teams[teams['Team'] == game['home_team']].iloc[0]
+        away_team_stats = teams[teams['Team'] == game['away_team']].iloc[0]
 
-    for i in range(min(len(teams), len(pitchers))):
-        team = teams.iloc[i]
-        pitcher = pitchers.iloc[i]
+        home_pitcher_stats = pitchers[pitchers['Pitcher'] == game['home_pitcher']].iloc[0]
+        away_pitcher_stats = pitchers[pitchers['Pitcher'] == game['away_pitcher']].iloc[0]
 
-        # Weighted NRFI formula
-        team_nrfi = team['NRFI%']
-        pitcher_nrfi = pitcher['NRFI%']
-        first_inning_era = pitcher['FirstInningERA']
+        # NRFI Score Calculation
+        team_factor = (home_team_stats['NRFI%'] + away_team_stats['NRFI%']) / 2
+        pitcher_factor = (home_pitcher_stats['NRFI%'] + away_pitcher_stats['NRFI%']) / 2
+        era_factor = max(0, 100 - ((home_pitcher_stats['FirstInningERA'] + 
+                                   away_pitcher_stats['FirstInningERA']) * 10))
 
-        # Convert ERA into a NRFI factor (lower ERA = higher NRFI chance)
-        era_factor = max(0, min(1, 1 - (first_inning_era / 5.0))) * 100
-
-        # Weighted NRFI %
-        nrfi_score = round((team_nrfi * 0.4 + pitcher_nrfi * 0.4 + era_factor * 0.2), 1)
+        nrfi_score = round((team_factor * 0.4 + pitcher_factor * 0.4 + era_factor * 0.2), 1)
         yrfi_score = round(100 - nrfi_score, 1)
 
-        # Confidence is distance from 50%
-        confidence = round(abs(nrfi_score - 50), 1)
+        # Confidence Score
+        confidence = nrfi_score if nrfi_score >= 50 else yrfi_score
 
-        # Decide NRFI or YRFI
-        prediction = "NRFI" if nrfi_score >= 60 else "YRFI"
+        # Label NRFI or YRFI
+        prediction = "NRFI" if nrfi_score >= 50 else "YRFI"
 
         results.append({
-            "Game Time": f"{5+i}:40 PM",   # Placeholder time
-            "Matchup": f"{team['Team']} vs Opponent",
-            "Pitchers": pitcher['Pitcher'],
+            "Game Time": game['Game Time'],
+            "Matchup": game['Matchup'],
+            "Pitchers": game['Pitchers'],
+            "Prediction": prediction,
             "NRFI %": nrfi_score,
             "YRFI %": yrfi_score,
-            "Prediction": prediction,
             "Confidence": confidence
         })
 
-    df = pd.DataFrame(results)
-    df = df.sort_values(by="Confidence", ascending=False).reset_index(drop=True)
-    return df
+    return pd.DataFrame(results)
