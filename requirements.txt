@@ -1,7 +1,15 @@
-streamlit
-pandas
-numpy
-requests
-beautifulsoup4
-lxml
-rebuild
+# Core app
+streamlit==1.38.0
+
+# Data handling
+pandas==2.2.2
+numpy==1.26.4
+
+# Web requests and parsing
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# Date parsing and CSV/Excel support
+python-dateutil==2.9.0
+openpyxl==3.1.5
