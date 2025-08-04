@@ -1,46 +1,43 @@
 import streamlit as st
 import pandas as pd
+from update_models import get_today_games, calculate_nrfi
 
 # -----------------------------
-# Page Configuration
+# PAGE CONFIG
 # -----------------------------
 st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-# Title and Back to Homepage
-st.markdown("## NRFI/YRFI Model")
-st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)")
+# Title and Back Button
+st.title("NRFI/YRFI Model")
+st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)")  # Update to your actual homepage
 
 # -----------------------------
-# Load Model Output
+# LOAD DATA
 # -----------------------------
-try:
-    df = pd.read_csv("nrfi_model.csv")
-except FileNotFoundError:
-    st.error("No NRFI model file found. Please wait for the GitHub Action to generate it.")
-    st.stop()
+df = get_today_games()
+df = calculate_nrfi(df)
 
-if df.empty:
-    st.warning("No games found for today.")
-else:
-    # Format confidence as percentage string if numeric
-    if "Confidence %" in df.columns:
-        df["Confidence %"] = df["Confidence %"].apply(
-            lambda x: f"{x}%" if x != "" and not pd.isna(x) else ""
-        )
+# -----------------------------
+# Apply Prediction Logic
+# -----------------------------
+# Mark TBD games as blank
+df.loc[df['Pitchers'].str.contains("TBD", case=False, na=False), ['Prediction', 'Confidence %']] = ""
 
-    # -----------------------------
-    # Color NRFI red, YRFI green
-    # -----------------------------
-    def color_predictions(val):
-        if val == "NRFI":
-            return "background-color: red; color: white; font-weight: bold"
-        elif val == "YRFI":
-            return "background-color: green; color: white; font-weight: bold"
-        return ""
+# -----------------------------
+# Style Function for Prediction Column
+# -----------------------------
+def color_prediction(val):
+    if val == "NRFI":
+        return "color: red; font-weight: bold;"
+    elif val == "YRFI":
+        return "color: green; font-weight: bold;"
+    return ""
 
-    # Display without index
-    st.dataframe(
-        df.style.applymap(color_predictions, subset=["Prediction"]),
-        use_container_width=True,
-        hide_index=True
-    )
+# -----------------------------
+# Display Styled Table
+# -----------------------------
+# Hide index and style Prediction column
+styled_df = df.style.applymap(color_prediction, subset=["Prediction"])
+
+# Use st.table for styled DataFrame
+st.table(styled_df)
