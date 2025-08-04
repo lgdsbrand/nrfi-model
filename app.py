@@ -7,33 +7,25 @@ from update_models import calculate_nrfi_predictions
 # -----------------------------
 st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-# -----------------------------
-# HEADER & BACK BUTTON
-# -----------------------------
-st.markdown("# NRFI/YRFI Model")
-st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)", unsafe_allow_html=True)
+st.title("NRFI/YRFI Model")
+st.markdown("[⬅️ Back to Homepage](https://lineupwire.com)")
 
 # -----------------------------
-# LOAD PREDICTIONS
+# GET PREDICTIONS
 # -----------------------------
 df = calculate_nrfi_predictions()
 
-# Drop any rows where Prediction is blank
-df = df[df["Prediction"] != ""]
-
-# Reorder / select columns for display
-df_display = df[[
-    "Time",
-    "Matchup",
-    "Pitchers",
-    "Prediction",
-    "Confidence %"
-]].reset_index(drop=True)
+# Filter out games with TBD pitchers
+if 'Pitchers' in df.columns:
+    df['Skip'] = df['Pitchers'].apply(lambda x: 'TBD' in x if isinstance(x, str) else False)
+    df.loc[df['Skip'], ['Prediction', 'Confidence %']] = ""
+    df.drop(columns=['Skip'], inplace=True)
 
 # -----------------------------
 # COLOR FUNCTION
 # -----------------------------
-def color_prediction(val):
+def color_predictions(val):
+    """Color NRFI as red, YRFI as green."""
     if val == "NRFI":
         return "color: red; font-weight: bold;"
     elif val == "YRFI":
@@ -41,10 +33,10 @@ def color_prediction(val):
     return ""
 
 # -----------------------------
-# STYLE AND DISPLAY TABLE
+# SHOW DATAFRAME
 # -----------------------------
-st.dataframe(
-    df_display.style.applymap(color_prediction, subset=["Prediction"]),
-    use_container_width=True,
-    hide_index=True
-)
+if df.empty:
+    st.warning("No games available today.")
+else:
+    styled_df = df.style.applymap(color_predictions, subset=["Prediction"])
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
