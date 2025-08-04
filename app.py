@@ -11,18 +11,26 @@ st.title("NRFI/YRFI Model")
 st.markdown("[⬅️ Back to Homepage](https://lineupwire.com)")
 
 # -----------------------------
-# GET PREDICTIONS
+# LOAD PREDICTIONS
 # -----------------------------
-df = calculate_nrfi_predictions()
+try:
+    df = calculate_nrfi_predictions()
+except Exception as e:
+    st.error(f"Error generating predictions: {e}")
+    st.stop()
 
-# Filter out games with TBD pitchers
-if 'Pitchers' in df.columns:
-    df['Skip'] = df['Pitchers'].apply(lambda x: 'TBD' in x if isinstance(x, str) else False)
-    df.loc[df['Skip'], ['Prediction', 'Confidence %']] = ""
-    df.drop(columns=['Skip'], inplace=True)
+# Ensure DataFrame has expected columns
+expected_cols = ["Game Time", "Matchup", "Pitchers", "Prediction", "Confidence %"]
+for col in expected_cols:
+    if col not in df.columns:
+        st.error(f"Missing column in DataFrame: {col}")
+        st.stop()
+
+# Remove rows with blank Prediction (TBD pitchers)
+df = df[df["Prediction"] != ""].reset_index(drop=True)
 
 # -----------------------------
-# COLOR FUNCTION
+# COLOR FUNCTION FOR PREDICTION
 # -----------------------------
 def color_predictions(val):
     """Color NRFI as red, YRFI as green."""
@@ -33,10 +41,14 @@ def color_predictions(val):
     return ""
 
 # -----------------------------
-# SHOW DATAFRAME
+# DISPLAY TABLE
 # -----------------------------
 if df.empty:
-    st.warning("No games available today.")
+    st.warning("No valid games available today.")
 else:
     styled_df = df.style.applymap(color_predictions, subset=["Prediction"])
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True
+    )
