@@ -3,7 +3,7 @@ name: Update NRFI Model
 on:
   workflow_dispatch:  # Allow manual runs
   schedule:
-    - cron: "0,5,11,15 * * *"  # Runs 11 AM and 3 PM UTC (~6 AM & 10 AM ET)
+    - cron: "0,5,12,17 * * *"  # Runs 11 AM and 3 PM UTC (~6 AM & 10 AM ET)
 
 jobs:
   update-nrfi-model:
