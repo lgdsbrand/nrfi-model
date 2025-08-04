@@ -2,117 +2,100 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# -----------------------------
+# -------------------------
 # CONFIG
-# -----------------------------
+# -------------------------
 ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
-CROWDSLINE_TEAM_URL = "https://www.thecrowdsline.ai/mlb/team-nrfi"  # Placeholder
-CROWDSLINE_PITCHER_URL = "https://www.thecrowdsline.ai/mlb/pitcher-nrfi"  # Placeholder
-CROWDSLINE_BALLPARK_URL = "https://www.thecrowdsline.ai/mlb/ballpark-nrfi"  # Placeholder
+CROWDSLINE_URL = "https://www.thecrowdsline.ai/api/nrfi"  # Example placeholder
+OUTPUT_CSV = "nrfi_model.csv"
 
-# -----------------------------
-# 1. SCRAPE TODAY'S GAMES
-# -----------------------------
+
 def get_today_games():
+    """Scrape ESPN for today's games and starting pitchers"""
     today = datetime.now().strftime("%Y%m%d")
     resp = requests.get(f"{ESPN_URL}?dates={today}").json()
-
     games = []
+
     for event in resp.get("events", []):
         comp = event["competitions"][0]
         home = comp["competitors"][0]
         away = comp["competitors"][1]
 
-        home_pitcher = home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD") if home.get("probables") else "TBD"
-        away_pitcher = away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD") if away.get("probables") else "TBD"
+        home_pitcher = home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
+        away_pitcher = away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
 
         game_time = datetime.fromisoformat(comp["date"][:-1]).strftime("%I:%M %p")
 
         games.append({
-            "Time": game_time,
+            "Game Time": game_time,
             "Matchup": f"{away['team']['displayName']} @ {home['team']['displayName']}",
-            "Home Team": home["team"]["displayName"],
-            "Away Team": away["team"]["displayName"],
-            "Pitchers": f"{away_pitcher} vs {home_pitcher}",
+            "Home Team": home['team']['displayName'],
+            "Away Team": away['team']['displayName'],
             "Home Pitcher": home_pitcher,
-            "Away Pitcher": away_pitcher
+            "Away Pitcher": away_pitcher,
+            "Pitchers": f"{away_pitcher} vs {home_pitcher}"
         })
 
     return pd.DataFrame(games)
 
-# -----------------------------
-# 2. SCRAPE CROWDSLINE DATA (SIMULATED)
-# -----------------------------
-def scrape_crowdsline_data():
-    """
-    In production: scrape TheCrowdsLine or use API.
-    For now, returns simulated NRFI% & Ballpark NRFI%.
-    """
-    # Example data to simulate
-    return {
-        "team_nrfi": {
-            "Houston Astros": 62,
-            "Miami Marlins": 58,
-            "Minnesota Twins": 60,
-            "Detroit Tigers": 55
-        },
-        "pitcher_nrfi": {
-            "Sandy Alcantara": 72,
-            "Jason Alexander": 60,
-            "Casey Mize": 65,
-            "Simeon Woods Richardson": 55
-        },
-        "ballpark_nrfi": {
-            "loanDepot Park": 65,
-            "Target Field": 58
-        }
-    }
 
-# -----------------------------
-# 3. CALCULATE NRFI/YRFI PREDICTIONS
-# -----------------------------
+def get_crowdsline_data():
+    """Scrape TheCrowdsLine for NRFI/YRFI data (placeholder)"""
+    try:
+        resp = requests.get(CROWDSLINE_URL).json()
+        df = pd.DataFrame(resp["data"])  # Adjust to actual JSON structure
+        # Expect columns: Team, NRFI%, YRFI%, Ballpark_NRFI%, FirstInningERA
+        return df
+    except:
+        return pd.DataFrame(columns=["Team", "NRFI%", "YRFI%", "Ballpark_NRFI%", "FirstInningERA"])
+
+
+def calculate_confidence(row, team_data):
+    """Calculate NRFI/YRFI confidence based on team + pitcher + ballpark"""
+    if "TBD" in row["Home Pitcher"] or "TBD" in row["Away Pitcher"]:
+        return "", ""
+
+    home = team_data[team_data["Team"] == row["Home Team"]]
+    away = team_data[team_data["Team"] == row["Away Team"]]
+
+    if home.empty or away.empty:
+        return "", ""
+
+    # Weighted confidence calculation
+    home_nrfi = float(home["NRFI%"].values[0])
+    away_nrfi = float(away["NRFI%"].values[0])
+    ballpark = float(home["Ballpark_NRFI%"].values[0])
+
+    avg_nrfi = (home_nrfi + away_nrfi + ballpark) / 3
+
+    prediction = "NRFI" if avg_nrfi >= 60 else "YRFI"  # Threshold adjusted
+    confidence = round(avg_nrfi, 1)
+
+    return prediction, confidence
+
+
 def calculate_nrfi_predictions():
+    """Generate full NRFI/YRFI predictions table"""
     games_df = get_today_games()
-    crowds_data = scrape_crowdsline_data()
+    team_data = get_crowdsline_data()
 
     predictions = []
     for _, row in games_df.iterrows():
-        away_pitcher = row["Away Pitcher"]
-        home_pitcher = row["Home Pitcher"]
-        home_team = row["Home Team"]
-        away_team = row["Away Team"]
-
-        # If TBD, leave prediction blank
-        if "TBD" in away_pitcher or "TBD" in home_pitcher:
-            predictions.append({"Prediction": "", "Confidence %": ""})
-            continue
-
-        # Pull stats (fallback to 50% if missing)
-        home_nrfi = crowds_data["team_nrfi"].get(home_team, 50)
-        away_nrfi = crowds_data["team_nrfi"].get(away_team, 50)
-        home_pitcher_nrfi = crowds_data["pitcher_nrfi"].get(home_pitcher, 50)
-        away_pitcher_nrfi = crowds_data["pitcher_nrfi"].get(away_pitcher, 50)
-        ballpark_nrfi = 60  # Default, could scrape stadium name mapping
-
-        # Combine into a confidence score
-        confidence = (home_nrfi + away_nrfi + home_pitcher_nrfi + away_pitcher_nrfi + ballpark_nrfi) / 5
-
-        # Determine prediction
-        if confidence >= 60:
-            prediction = "NRFI"
-        else:
-            prediction = "YRFI"
-
+        prediction, confidence = calculate_confidence(row, team_data)
         predictions.append({
+            "Game Time": row["Game Time"],
+            "Matchup": row["Matchup"],
+            "Pitchers": row["Pitchers"],
             "Prediction": prediction,
-            "Confidence %": round(confidence, 1)
+            "Confidence %": confidence
         })
 
-    # Merge predictions into games_df
-    pred_df = pd.DataFrame(predictions)
-    final_df = pd.concat([games_df, pred_df], axis=1)
+    final_df = pd.DataFrame(predictions)
+    final_df.to_csv(OUTPUT_CSV, index=False)
     return final_df
 
+
+# If run manually, generate today's file
 if __name__ == "__main__":
     df = calculate_nrfi_predictions()
-    df.to_csv("nrfi_model.csv", index=False)
+    print(df)
