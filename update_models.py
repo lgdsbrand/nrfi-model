@@ -1,9 +1,10 @@
-import requests
 import pandas as pd
+import numpy as np
+import requests
 from datetime import datetime
 
 # -----------------------------
-# Helper: Fetch Today's Games
+# ESPN API for MLB Schedule
 # -----------------------------
 def get_today_games():
     today = datetime.now().strftime("%Y%m%d")
@@ -18,12 +19,14 @@ def get_today_games():
 
         game_time = datetime.fromisoformat(comp["date"][:-1]).strftime("%I:%M %p")
 
-        home_pitcher = home.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
-        away_pitcher = away.get("probables", [{}])[0].get("athlete", {}).get("displayName", "TBD")
+        # Starting pitchers (fallback to TBD if not listed)
+        home_pitcher = home.get("probables", [{}])[0].get("displayName", "TBD")
+        away_pitcher = away.get("probables", [{}])[0].get("displayName", "TBD")
 
         games.append({
             "Game Time": game_time,
             "Matchup": f"{away['team']['displayName']} @ {home['team']['displayName']}",
+            "Pitchers": f"{away_pitcher} vs {home_pitcher}",
             "Home Team": home['team']['displayName'],
             "Away Team": away['team']['displayName'],
             "Home Pitcher": home_pitcher,
@@ -32,56 +35,48 @@ def get_today_games():
     return pd.DataFrame(games)
 
 # -----------------------------
-# Helper: Fake NRFI/YRFI Stats
-# Replace these with TheCrowdsLine/TeamRankings in production
-# -----------------------------
-def get_team_pitcher_stats(team, pitcher):
-    # Simulated fallback stats (real integration would scrape)
-    team_stats = {
-        "Yankees": {"team_nrfi": 63, "team_yrfi": 37},
-        "Red Sox": {"team_nrfi": 58, "team_yrfi": 42},
-        "Dodgers": {"team_nrfi": 70, "team_yrfi": 30},
-        "Giants": {"team_nrfi": 65, "team_yrfi": 35},
-    }
-    pitcher_stats = {
-        "Gerrit Cole": {"pitcher_nrfi": 78, "era_1st": 1.20},
-        "Brayan Bello": {"pitcher_nrfi": 65, "era_1st": 2.10},
-        "Walker Buehler": {"pitcher_nrfi": 82, "era_1st": 0.95},
-        "Logan Webb": {"pitcher_nrfi": 70, "era_1st": 1.45},
-    }
-
-    team_info = team_stats.get(team, {"team_nrfi": 60, "team_yrfi": 40})
-    pitcher_info = pitcher_stats.get(pitcher, {"pitcher_nrfi": 60, "era_1st": 2.00})
-    return team_info, pitcher_info
-
-# -----------------------------
-# Calculate NRFI/YRFI Confidence
+# NRFI/YRFI Model Formula
 # -----------------------------
 def calculate_nrfi(df):
-    results = []
-    for _, row in df.iterrows():
-        home_pitcher = row["Home Pitcher"]
-        away_pitcher = row["Away Pitcher"]
+    predictions = []
 
-        # Skip if TBD pitcher
-        if "TBD" in home_pitcher or "TBD" in away_pitcher:
-            results.append({**row, "Prediction": "", "Confidence %": ""})
+    for _, row in df.iterrows():
+        # Skip prediction if pitcher is TBD
+        if "TBD" in row["Pitchers"]:
+            predictions.append({"Prediction": "", "Confidence %": ""})
             continue
 
-        # Get team & pitcher stats
-        home_team_stats, home_pitcher_stats = get_team_pitcher_stats(row["Home Team"], home_pitcher)
-        away_team_stats, away_pitcher_stats = get_team_pitcher_stats(row["Away Team"], away_pitcher)
+        # Example formula: combine team & pitcher NRFI %
+        # Placeholder values – replace with TheCrowdsLine + TeamRankings scrape
+        team_nrfi_home = np.random.randint(55, 80)
+        team_nrfi_away = np.random.randint(55, 80)
+        pitcher_nrfi_home = np.random.randint(50, 85)
+        pitcher_nrfi_away = np.random.randint(50, 85)
 
-        # Weighted NRFI confidence calculation
-        team_conf = (home_team_stats["team_nrfi"] + away_team_stats["team_nrfi"]) / 2
-        pitcher_conf = (home_pitcher_stats["pitcher_nrfi"] + away_pitcher_stats["pitcher_nrfi"]) / 2
+        # Weighted average formula
+        confidence = round(
+            (team_nrfi_home + team_nrfi_away + pitcher_nrfi_home + pitcher_nrfi_away) / 4, 1
+        )
 
-        # ERA penalty: lower ERA increases NRFI confidence, cap +/- 5%
-        era_factor = max(0, 3 - (home_pitcher_stats["era_1st"] + away_pitcher_stats["era_1st"]) / 2) * 5
-        confidence = round((team_conf * 0.4) + (pitcher_conf * 0.4) + era_factor, 1)
-
+        # Determine NRFI vs YRFI
         prediction = "NRFI" if confidence >= 60 else "YRFI"
 
-        results.append({**row, "Prediction": prediction, "Confidence %": confidence})
+        predictions.append({
+            "Prediction": prediction,
+            "Confidence %": confidence
+        })
 
-    return pd.DataFrame(results)[["Game Time", "Matchup", "Home Pitcher", "Away Pitcher", "Prediction", "Confidence %"]]
+    return pd.DataFrame(predictions)
+
+# -----------------------------
+# Main Execution
+# -----------------------------
+if __name__ == "__main__":
+    games_df = get_today_games()
+    predictions_df = calculate_nrfi(games_df)
+
+    final_df = pd.concat([games_df[["Game Time", "Matchup", "Pitchers"]], predictions_df], axis=1)
+
+    # Save for Streamlit app
+    final_df.to_csv("nrfi_model.csv", index=False)
+    print("NRFI model updated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
