@@ -2,15 +2,37 @@ import streamlit as st
 import pandas as pd
 from update_models import calculate_nrfi_predictions
 
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
 st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
 
-st.title("NRFI/YRFI Model")
-st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)")
+# -----------------------------
+# HEADER & BACK BUTTON
+# -----------------------------
+st.markdown("# NRFI/YRFI Model")
+st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)", unsafe_allow_html=True)
 
-# Load predictions
+# -----------------------------
+# LOAD PREDICTIONS
+# -----------------------------
 df = calculate_nrfi_predictions()
 
-# Color NRFI/YRFI
+# Drop any rows where Prediction is blank
+df = df[df["Prediction"] != ""]
+
+# Reorder / select columns for display
+df_display = df[[
+    "Time",
+    "Matchup",
+    "Pitchers",
+    "Prediction",
+    "Confidence %"
+]].reset_index(drop=True)
+
+# -----------------------------
+# COLOR FUNCTION
+# -----------------------------
 def color_prediction(val):
     if val == "NRFI":
         return "color: red; font-weight: bold;"
@@ -18,9 +40,11 @@ def color_prediction(val):
         return "color: green; font-weight: bold;"
     return ""
 
-# Display styled table
+# -----------------------------
+# STYLE AND DISPLAY TABLE
+# -----------------------------
 st.dataframe(
-    df.style.applymap(color_prediction, subset=["Prediction"]),
+    df_display.style.applymap(color_prediction, subset=["Prediction"]),
     use_container_width=True,
     hide_index=True
 )
