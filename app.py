@@ -1,54 +1,29 @@
 import streamlit as st
 import pandas as pd
-from update_models import calculate_nrfi_predictions
 
-# -----------------------------
-# PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="NRFI/YRFI Model", layout="wide")
+# Replace this with your Google Sheet CSV URL
+NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=NRFI_MODEL_GID"
 
-st.title("NRFI/YRFI Model")
-st.markdown("[⬅️ Back to Homepage](https://lineupwire.com)")
+st.title("⚾ NRFI/YRFI Model")
 
-# -----------------------------
-# LOAD PREDICTIONS
-# -----------------------------
-try:
-    df = calculate_nrfi_predictions()
-except Exception as e:
-    st.error(f"Error generating predictions: {e}")
-    st.stop()
+@st.cache_data(ttl=3600)
+def load_nrfi_data():
+    df = pd.read_csv(NRFI_CSV_URL)
+    # Sort by confidence descending
+    df = df.sort_values(by="Confidence (1-10)", ascending=False)
+    return df
 
-# Ensure DataFrame has expected columns
-expected_cols = ["Game Time", "Matchup", "Pitchers", "Prediction", "Confidence %"]
-for col in expected_cols:
-    if col not in df.columns:
-        st.error(f"Missing column in DataFrame: {col}")
-        st.stop()
+df = load_nrfi_data()
 
-# Remove rows with blank Prediction (TBD pitchers)
-df = df[df["Prediction"] != ""].reset_index(drop=True)
-
-# -----------------------------
-# COLOR FUNCTION FOR PREDICTION
-# -----------------------------
+# Color function
 def color_predictions(val):
-    """Color NRFI as red, YRFI as green."""
     if val == "NRFI":
-        return "color: red; font-weight: bold;"
+        return "background-color: #fcd7d7; color: black;"  # Red
     elif val == "YRFI":
-        return "color: green; font-weight: bold;"
+        return "background-color: #d1f7c4; color: black;"  # Green
     return ""
 
-# -----------------------------
-# DISPLAY TABLE
-# -----------------------------
-if df.empty:
-    st.warning("No valid games available today.")
-else:
-    styled_df = df.style.applymap(color_predictions, subset=["Prediction"])
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True
-    )
+# Apply color styling only to NRFI/YRFI column
+styled_df = df.style.applymap(color_predictions, subset=["NRFI/YRFI"])
+
+st.dataframe(styled_df, use_container_width=True, hide_index=True)
