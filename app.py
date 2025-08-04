@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from update_models import get_today_games, calculate_nrfi
 
 # -----------------------------
 # Page Configuration
@@ -12,32 +11,36 @@ st.markdown("## NRFI/YRFI Model")
 st.markdown("⬅️ [Back to Homepage](https://lineupwire.com)")
 
 # -----------------------------
-# Load Data and Run Model
+# Load Model Output
 # -----------------------------
-st.write("Fetching today's MLB games and calculating NRFI/YRFI confidence...")
+try:
+    df = pd.read_csv("nrfi_model.csv")
+except FileNotFoundError:
+    st.error("No NRFI model file found. Please wait for the GitHub Action to generate it.")
+    st.stop()
 
-games_df = get_today_games()
-
-if games_df.empty:
-    st.warning("No MLB games found for today. Check the ESPN API or try again later.")
+if df.empty:
+    st.warning("No games found for today.")
 else:
-    results_df = calculate_nrfi(games_df)
+    # Format confidence as percentage string if numeric
+    if "Confidence %" in df.columns:
+        df["Confidence %"] = df["Confidence %"].apply(
+            lambda x: f"{x}%" if x != "" and not pd.isna(x) else ""
+        )
 
-    # Color NRFI green and YRFI red
+    # -----------------------------
+    # Color NRFI red, YRFI green
+    # -----------------------------
     def color_predictions(val):
         if val == "NRFI":
-            return "color: green; font-weight: bold"
+            return "background-color: red; color: white; font-weight: bold"
         elif val == "YRFI":
-            return "color: red; font-weight: bold"
+            return "background-color: green; color: white; font-weight: bold"
         return ""
 
-    # Format confidence percentage
-    if "Confidence %" in results_df.columns:
-        results_df["Confidence %"] = results_df["Confidence %"].apply(lambda x: f"{x}%" if x != "" else "")
-
-    # Display table without index
+    # Display without index
     st.dataframe(
-        results_df.style.applymap(color_predictions, subset=["Prediction"]),
+        df.style.applymap(color_predictions, subset=["Prediction"]),
         use_container_width=True,
         hide_index=True
     )
