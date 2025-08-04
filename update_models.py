@@ -112,3 +112,7 @@ def calculate_nrfi_predictions():
     pred_df = pd.DataFrame(predictions)
     final_df = pd.concat([games_df, pred_df], axis=1)
     return final_df
+
+if __name__ == "__main__":
+    df = calculate_nrfi_predictions()
+    df.to_csv("nrfi_model.csv", index=False)
