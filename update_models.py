@@ -1,82 +1,92 @@
 import pandas as pd
 import numpy as np
-import requests
+import random
 from datetime import datetime
 
-# -----------------------------
-# ESPN API for MLB Schedule
-# -----------------------------
+TEAM_FILE = "team_nrfi.csv"
+PITCHER_FILE = "pitcher_nrfi.csv"
+
 def get_today_games():
-    today = datetime.now().strftime("%Y%m%d")
-    url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={today}"
-    resp = requests.get(url).json()
+    """
+    Simulate daily games with team & pitcher NRFI data.
+    Replace this with ESPN scraping if needed.
+    """
+    teams = pd.read_csv(TEAM_FILE)
+    pitchers = pd.read_csv(PITCHER_FILE)
 
     games = []
-    for event in resp.get("events", []):
-        comp = event["competitions"][0]
-        home = comp["competitors"][0]
-        away = comp["competitors"][1]
+    # Pair sequentially for simplicity
+    for i in range(0, min(len(teams), len(pitchers)), 2):
+        home_team = teams.iloc[i % len(teams)]
+        away_team = teams.iloc[(i+1) % len(teams)]
+        home_pitcher = pitchers.iloc[i % len(pitchers)]
+        away_pitcher = pitchers.iloc[(i+1) % len(pitchers)]
 
-        game_time = datetime.fromisoformat(comp["date"][:-1]).strftime("%I:%M %p")
-
-        # Starting pitchers (fallback to TBD if not listed)
-        home_pitcher = home.get("probables", [{}])[0].get("displayName", "TBD")
-        away_pitcher = away.get("probables", [{}])[0].get("displayName", "TBD")
+        game_time = datetime.now().strftime("%I:%M %p")
 
         games.append({
             "Game Time": game_time,
-            "Matchup": f"{away['team']['displayName']} @ {home['team']['displayName']}",
-            "Pitchers": f"{away_pitcher} vs {home_pitcher}",
-            "Home Team": home['team']['displayName'],
-            "Away Team": away['team']['displayName'],
-            "Home Pitcher": home_pitcher,
-            "Away Pitcher": away_pitcher
+            "Matchup": f"{away_team['Team']} @ {home_team['Team']}",
+            "Pitchers": f"{away_pitcher['Pitcher']} vs {home_pitcher['Pitcher']}",
+            "Home Team": home_team['Team'],
+            "Away Team": away_team['Team'],
+            "Home Pitcher": home_pitcher['Pitcher'],
+            "Away Pitcher": away_pitcher['Pitcher'],
         })
     return pd.DataFrame(games)
 
-# -----------------------------
-# NRFI/YRFI Model Formula
-# -----------------------------
 def calculate_nrfi(df):
-    predictions = []
+    """
+    Calculate NRFI/YRFI prediction with confidence.
+    NRFI = Red, YRFI = Green
+    """
+    teams = pd.read_csv(TEAM_FILE)
+    pitchers = pd.read_csv(PITCHER_FILE)
 
+    predictions = []
     for _, row in df.iterrows():
-        # Skip prediction if pitcher is TBD
-        if "TBD" in row["Pitchers"]:
+        home_team = row['Home Team']
+        away_team = row['Away Team']
+        home_pitcher = row['Home Pitcher']
+        away_pitcher = row['Away Pitcher']
+
+        # Skip if TBD pitcher
+        if "TBD" in home_pitcher or "TBD" in away_pitcher:
             predictions.append({"Prediction": "", "Confidence %": ""})
             continue
 
-        # Example formula: combine team & pitcher NRFI %
-        # Placeholder values – replace with TheCrowdsLine + TeamRankings scrape
-        team_nrfi_home = np.random.randint(55, 80)
-        team_nrfi_away = np.random.randint(55, 80)
-        pitcher_nrfi_home = np.random.randint(50, 85)
-        pitcher_nrfi_away = np.random.randint(50, 85)
+        # Pull stats
+        home_team_stats = teams[teams['Team'] == home_team].iloc[0]
+        away_team_stats = teams[teams['Team'] == away_team].iloc[0]
+        home_pitcher_stats = pitchers[pitchers['Pitcher'] == home_pitcher].iloc[0]
+        away_pitcher_stats = pitchers[pitchers['Pitcher'] == away_pitcher].iloc[0]
 
-        # Weighted average formula
-        confidence = round(
-            (team_nrfi_home + team_nrfi_away + pitcher_nrfi_home + pitcher_nrfi_away) / 4, 1
-        )
+        # Weighted confidence: average of NRFI%
+        confidence = (
+            home_team_stats['NRFI%'] +
+            away_team_stats['NRFI%'] +
+            home_pitcher_stats['NRFI%'] +
+            away_pitcher_stats['NRFI%']
+        ) / 4
 
-        # Determine NRFI vs YRFI
-        prediction = "NRFI" if confidence >= 60 else "YRFI"
+        confidence = round(confidence, 1)
+
+        # Decide NRFI or YRFI
+        if confidence >= 60:
+            prediction = "NRFI"  # Red
+        else:
+            prediction = "YRFI"  # Green
 
         predictions.append({
             "Prediction": prediction,
             "Confidence %": confidence
         })
 
-    return pd.DataFrame(predictions)
+    result = pd.concat([df.reset_index(drop=True), pd.DataFrame(predictions)], axis=1)
+    return result
 
-# -----------------------------
-# Main Execution
-# -----------------------------
 if __name__ == "__main__":
-    games_df = get_today_games()
-    predictions_df = calculate_nrfi(games_df)
-
-    final_df = pd.concat([games_df[["Game Time", "Matchup", "Pitchers"]], predictions_df], axis=1)
-
-    # Save for Streamlit app
-    final_df.to_csv("nrfi_model.csv", index=False)
-    print("NRFI model updated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    df = get_today_games()
+    df = calculate_nrfi(df)
+    df.to_csv("nrfi_model.csv", index=False)
+    print(df)
