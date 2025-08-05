@@ -7,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="⚾ NRFI/YRFI Model", layout="wide")
 
 # Your Google Sheet CSV URL
-NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Jhb12EM_hac0mValF0lXlue0V2hcuo7K_Uyhb-H0U6E/export?format=csv&gid=1683567422"
+NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Jhb12EM_hac0mValF0lXlue0V2hcuo7K_Uyhb-H0U6E/gviz/tq?tqx=out:csv&sheet=NRFI"
 
 st.title("⚾ NRFI/YRFI Model")
 st.write("Source: Google Sheets (auto-updated)")
@@ -27,7 +27,7 @@ def load_nrfi_data():
 
     # Ensure required columns exist
     if "Confidence (1-10)" not in df.columns or "Pick" not in df.columns:
-        st.error("Google Sheet is missing required columns: 'Pick' or 'Confidence (1-10)'")
+        st.error("Google Sheet is missing required columns: 'Pick' or 'Confidence(1-10)'")
         st.stop()
 
     # Sort by Confidence descending
