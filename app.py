@@ -2,36 +2,22 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="⚾ NRFI/YRFI Model", layout="wide")
-
 st.title("⚾ NRFI/YRFI Model")
 st.write("Source: Google Sheets (auto-updated)")
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-# Replace with your actual NRFI tab CSV link
-NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Hbl2EHW_ac0mVa1F0lNxuaeDV2hcuo7K_Uyhb-HOU6E/export?format=csv&gid=1683567422"
+NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/gviz/tq?tqx=out:csv&sheet=NRFI"
 
-# -----------------------------
-# LOAD DATA
-# -----------------------------
-try:
+@st.cache_data(ttl=3600)
+def load_nrfi_data():
     df = pd.read_csv(NRFI_CSV_URL)
-except Exception as e:
-    st.error(f"Failed to load NRFI data: {e}")
-    st.stop()
-
-# Clean column names (remove extra spaces)
-df.columns = df.columns.str.strip()
-
-# Check for empty table
-if df.empty:
-    st.error("No data found in the NRFI Google Sheet.")
-    st.stop()
-
-# Sort by confidence if column exists
-if "Confidence (1-10)" in df.columns:
     df = df.sort_values(by="Confidence (1-10)", ascending=False)
+    return df
 
-# Display table (just like MLB model first)
-st.dataframe(df, use_container_width=True, hide_index=True)
+df = load_nrfi_data()
+
+# Display the table with only the 5 columns from the Google Sheet
+st.dataframe(
+    df[['Game','Pitchers','Model %','NRFI/YRFI','Confidence (1-10)']],
+    use_container_width=True,
+    hide_index=True
+)
