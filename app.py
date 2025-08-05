@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Replace this with your Google Sheet CSV URL
-NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=NRFI_MODEL_GID"
+NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Hbl2EHW_ac0mVa1F0lNxuaeDV2hcuo7K_Uyhb-HOU6E/export?format=csv&gid=NRFI_MODEL_GID"
 
 st.title("⚾ NRFI/YRFI Model")
 
