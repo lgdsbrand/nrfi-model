@@ -10,7 +10,7 @@ st.write("Source: Google Sheets (auto-updated)")
 # CONFIG
 # -----------------------------
 # Replace with your actual NRFI tab CSV link
-NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Jhb12EMaCBwNafl0IXuaeDV2hcuo7K_Uyhb-H0U6E/export?format=csv&gid=NRFI"
+NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Jhb12EMaCBwNafl0IXuaeDV2hcuo7K_Uyhb-H0U6E/gviz/tq?tqx=out:csv&sheet=NRFI"
 
 # -----------------------------
 # LOAD DATA
