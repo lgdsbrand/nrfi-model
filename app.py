@@ -6,42 +6,39 @@ import pandas as pd
 # -----------------------------
 st.set_page_config(page_title="⚾ NRFI/YRFI Model", layout="wide")
 
-# Your Google Sheet CSV URL
-NRFI_CSV_URL = "https://docs.google.com/spreadsheets/d/1Jhb12EM_hac0mValF0lXlue0V2hcuo7K_Uyhb-H0U6E/gviz/tq?tqx=out:csv&sheet=NRFI"
+# Public Google Sheet CSV URL using gviz format (change Sheet tab name if needed)
+NRFI_CSV_URL = (
+    "https://docs.google.com/spreadsheets/d/1Jhb12EMaCBwNafl0IXuaeDV2hcuo7K_Uyhb-H0U6E/gviz/tq?tqx=out:csv&sheet=NRFI"
+)
 
 st.title("⚾ NRFI/YRFI Model")
 st.write("Source: Google Sheets (auto-updated)")
 
 # -----------------------------
-# LOAD DATA
+# Load Data Function
 # -----------------------------
 @st.cache_data(ttl=3600)
 def load_nrfi_data():
+    # Read CSV directly from Google Sheets
     df = pd.read_csv(NRFI_CSV_URL)
 
-    # Strip spaces from column names to avoid KeyErrors
-    df.rename(columns=lambda x: x.strip(), inplace=True)
+    # Strip whitespace from column names to avoid KeyError
+    df.columns = df.columns.str.strip()
 
-    # Print columns for debugging
-    st.write("Columns found:", df.columns.tolist())
-
-    # Ensure required columns exist
-    if "Confidence (1-10)" not in df.columns or "Pick" not in df.columns:
-        st.error("Google Sheet is missing required columns: 'Pick' or 'Confidence(1-10)'")
+    # Ensure Confidence column exists
+    if "Confidence (1-10)" not in df.columns:
+        st.error("Column 'Confidence (1-10)' not found in Google Sheet.")
         st.stop()
 
-    # Sort by Confidence descending
+    # Sort by Confidence column descending
     df = df.sort_values(by="Confidence (1-10)", ascending=False)
+
     return df
 
 df = load_nrfi_data()
 
-if df.empty:
-    st.error("No data found in Google Sheet.")
-    st.stop()
-
 # -----------------------------
-# COLOR FUNCTION
+# Color Function for NRFI/YRFI
 # -----------------------------
 def color_predictions(val):
     if val == "NRFI":
@@ -50,10 +47,11 @@ def color_predictions(val):
         return "background-color: #fcd7d7; color: black;"  # Red
     return ""
 
-# Apply color styling only to Pick column
-styled_df = df.style.applymap(color_predictions, subset=["Pick"])
-
 # -----------------------------
-# DISPLAY TABLE
+# Apply Styling
 # -----------------------------
-st.dataframe(styled_df, use_container_width=True, hide_index=True)
+if not df.empty:
+    styled_df = df.style.applymap(color_predictions, subset=["Pick"])
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+else:
+    st.error("No data available in the NRFI sheet.")
